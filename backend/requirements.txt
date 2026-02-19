@@ -1,7 +1,7 @@
 # FastAPI & server
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
-python-multipart==0.0.12
+python-multipart==0.0.22
 
 # Auth & security
 python-jose[cryptography]==3.3.0
@@ -9,7 +9,7 @@ passlib[bcrypt]==1.7.4
 
 # Database
 sqlalchemy[asyncio]==2.0.36
-aiomysql==0.2.0
+aiomysql==0.3.0
 aiosqlite==0.20.0
 
 # Settings & environment
