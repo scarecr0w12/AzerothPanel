@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Shield body -->
+  <path d="M16 2L4 7v9c0 6.627 5.149 11.627 12 13 6.851-1.373 12-6.373 12-13V7L16 2Z"
+        fill="#7c6afc" opacity="0.9"/>
+  <!-- Shield highlight -->
+  <path d="M16 5L7 9v7c0 4.8 3.6 8.5 9 9.8V5Z"
+        fill="white" opacity="0.15"/>
+  <!-- Inner accent line -->
+  <path d="M16 9v10M11 14l5 5 5-5"
+        stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,41 @@
+services:
+  # ─── Backend API ─────────────────────────────────────────────────────────────
+  # network_mode: host lets the container reach MySQL/SOAP that run on the host
+  # (127.0.0.1 inside the container resolves to the host machine).
+  # NOTE: with host networking, `ports:` has no effect — the container shares
+  #       the host's network stack directly.
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: azerothpanel-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    network_mode: host
+    volumes:
+      # AC_PATH is read from .env (root). Falls back to /opt/azerothcore.
+      - ${AC_PATH:-/opt/azerothcore}:${AC_PATH:-/opt/azerothcore}:rw
+      # Persist the panel SQLite database across restarts
+      - panel_data:/data
+
+  # ─── Frontend (nginx) ────────────────────────────────────────────────────────
+  # Multi-stage Dockerfile: builds the React app, then serves it with nginx.
+  # nginx proxies /api/ and /ws/ to the backend on the host (port 8000).
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: azerothpanel-frontend
+    restart: unless-stopped
+    ports:
+      # PANEL_PORT is read from .env (root). Falls back to 80.
+      - "${PANEL_PORT:-80}:80"
+    extra_hosts:
+      # Resolves host.docker.internal → host machine IP (Linux requires this)
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
+
+volumes:
+  panel_data:
+

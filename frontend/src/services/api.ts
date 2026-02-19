@@ -1,0 +1,164 @@
+import axios from 'axios'
+
+const api = axios.create({
+  baseURL: '/api/v1',
+  headers: { 'Content-Type': 'application/json' },
+})
+
+// Attach JWT to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('ap_token')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+// Redirect to login on 401
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('ap_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(err)
+  }
+)
+
+export default api
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+export const authApi = {
+  login: (username: string, password: string) =>
+    api.post('/auth/login/json', { username, password }),
+  me: () => api.get('/auth/me'),
+}
+
+// ─── Server ──────────────────────────────────────────────────────────────────
+export const serverApi = {
+  status: () => api.get('/server/status'),
+  startWorld: () => api.post('/server/worldserver/start'),
+  stopWorld: () => api.post('/server/worldserver/stop'),
+  restartWorld: () => api.post('/server/worldserver/restart'),
+  startAuth: () => api.post('/server/authserver/start'),
+  stopAuth: () => api.post('/server/authserver/stop'),
+  restartAuth: () => api.post('/server/authserver/restart'),
+  command: (command: string) => api.post('/server/command', { command }),
+  info: () => api.get('/server/info'),
+  announce: (message: string) => api.post('/server/announce', { command: message }),
+}
+
+// ─── Logs ────────────────────────────────────────────────────────────────────
+export const logsApi = {
+  sources: () => api.get('/logs/sources'),
+  tail: (source: string, lines = 500) => api.get(`/logs/${source}`, { params: { lines } }),
+  search: (source: string, search: string, level?: string) =>
+    api.get(`/logs/${source}`, { params: { search, level } }),
+  download: (source: string) => `/api/v1/logs/${source}/download`,
+}
+
+// ─── Players ─────────────────────────────────────────────────────────────────
+export const playersApi = {
+  online: () => api.get('/players/online'),
+  accounts: (search?: string, page = 1) =>
+    api.get('/players/accounts', { params: { search, page } }),
+  characters: (search?: string, onlineOnly = false, page = 1) =>
+    api.get('/players/characters', { params: { search, online_only: onlineOnly, page } }),
+  character: (guid: number) => api.get(`/players/characters/${guid}`),
+  ban: (account_id: number, duration: string, reason: string) =>
+    api.post('/players/ban', { account_id, duration, reason }),
+  unban: (account_id: number) => api.post(`/players/unban/${account_id}`),
+  kick: (name: string) => api.post(`/players/kick/${name}`),
+  announce: (message: string, target = 'all') =>
+    api.post('/players/announce', { message, target }),
+  modify: (guid: number, field: string, value: unknown) =>
+    api.post('/players/modify', { guid, field, value }),
+}
+
+// ─── Database ─────────────────────────────────────────────────────────────────
+export const dbApi = {
+  tables: (database: string) => api.get(`/database/tables/${database}`),
+  query: (database: string, query: string, max_rows = 500) =>
+    api.post('/database/query', { database, query, max_rows }),
+  browse: (database: string, table: string, page = 1) =>
+    api.get(`/database/table/${database}/${table}`, { params: { page } }),
+  backup: (database: string) => api.post('/database/backup', null, { params: { database } }),
+}
+
+// ─── Installation ─────────────────────────────────────────────────────────────
+export const installApi = {
+  status: () => api.get('/installation/status'),
+  worldserverConf: () => api.get('/installation/config/worldserver'),
+  saveWorldserverConf: (content: string) =>
+    api.put('/installation/config/worldserver', { content }),
+  authserverConf: () => api.get('/installation/config/authserver'),
+  saveAuthserverConf: (content: string) =>
+    api.put('/installation/config/authserver', { content }),
+}
+
+// ─── Compilation ─────────────────────────────────────────────────────────────
+export const compileApi = {
+  status: () => api.get('/compilation/status'),
+  /**
+   * Start a build and return the raw fetch Response (SSE stream).
+   * The caller is responsible for reading response.body.
+   */
+  build: (
+    buildType: string,
+    jobs: number,
+    cmakeExtra: string,
+    signal?: AbortSignal,
+  ) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/compilation/build', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ build_type: buildType, jobs, cmake_extra: cmakeExtra }),
+      signal,
+    })
+  },
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+export const settingsApi = {
+  get: () => api.get('/settings'),
+  update: (data: Record<string, string>) => api.put('/settings', data),
+  testDb: (data: {
+    host: string
+    port: string
+    user: string
+    password: string
+    db_name: string
+  }) => api.post('/settings/test-db', data),
+}
+
+// ─── Installation (streaming) ──────────────────────────────────────────────────
+export const installStreamApi = {
+  /**
+   * Start the installation and return the raw fetch Response (SSE stream).
+   */
+  run: (
+    config: {
+      ac_path: string
+      db_host: string
+      db_user: string
+      db_password: string
+      clone_branch: string
+      repository_url: string
+    },
+    signal?: AbortSignal,
+  ) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/installation/run', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(config),
+      signal,
+    })
+  },}
+

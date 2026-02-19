@@ -1,0 +1,34 @@
+# FastAPI & server
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+
+# Auth & security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+aiomysql==0.2.0
+aiosqlite==0.20.0
+
+# Settings & environment
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# HTTP client (for SOAP calls)
+httpx==0.27.2
+
+# Async file I/O (log tailing)
+aiofiles==24.1.0
+
+# Process monitoring
+psutil==6.1.0
+
+# Task queue
+celery==5.4.0
+redis==5.2.0
+
+# SSH client (optional, for remote servers)
+asyncssh==2.18.0
+
