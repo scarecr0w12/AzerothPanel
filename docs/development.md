@@ -1,0 +1,267 @@
+# Development Guide
+
+This document covers setting up a local development environment, the project conventions, and how to contribute.
+
+---
+
+## Table of Contents
+
+1. [Local setup (no Docker)](#local-setup-no-docker)
+2. [Backend development](#backend-development)
+3. [Frontend development](#frontend-development)
+4. [Code style & conventions](#code-style--conventions)
+5. [Adding a new API endpoint](#adding-a-new-api-endpoint)
+6. [Adding a new frontend page](#adding-a-new-frontend-page)
+7. [Environment variables in development](#environment-variables-in-development)
+8. [Troubleshooting](#troubleshooting)
+
+---
+
+## Local setup (no Docker)
+
+### Requirements
+
+- Python 3.11+
+- Node.js 20 LTS + npm
+- A running AzerothCore MySQL instance accessible from your machine
+- (Optional) A running worldserver on the same machine for SOAP commands
+
+### Quick start
+
+```bash
+git clone https://github.com/scarecr0w12/AzerothPanel.git
+cd AzerothPanel
+
+# Install deps
+make install          # runs install-backend + install-frontend
+
+# Copy environment templates
+cp backend/.env.example backend/.env
+# Set SECRET_KEY, PANEL_ADMIN_USER, PANEL_ADMIN_PASSWORD in backend/.env
+
+# Start both processes in parallel (requires make 4.x)
+make dev
+```
+
+- Backend: [http://localhost:8000](http://localhost:8000)
+- Frontend: [http://localhost:5173](http://localhost:5173) (with HMR)
+- Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## Backend development
+
+### Virtual environment
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Running with auto-reload
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Project layout
+
+```
+backend/app/
+├── main.py             # App factory: registers routers, CORS, lifespan event
+├── core/
+│   ├── config.py       # Pydantic BaseSettings — all env vars typed here
+│   ├── database.py     # Async SQLAlchemy engine + session factory
+│   └── security.py     # JWT create/verify, password hashing, `get_current_user`
+├── models/
+│   ├── panel_models.py # SQLAlchemy ORM models (PanelSettings, etc.)
+│   └── schemas.py      # Pydantic schemas for request/response bodies
+├── api/v1/
+│   ├── router.py       # Aggregates all endpoint routers under /api/v1
+│   └── endpoints/      # One file per feature domain
+├── api/websockets/
+│   └── logs.py         # WebSocket handler for live log tailing
+└── services/
+    ├── panel_settings.py           # CRUD helpers for panel settings
+    └── azerothcore/
+        ├── server_manager.py       # psutil-based process control
+        ├── compiler.py             # Runs cmake/make, yields output lines
+        ├── installer.py            # Runs AC installation steps
+        └── soap_client.py          # HTTP SOAP client (httpx)
+```
+
+### Adding a Python dependency
+
+1. Activate the venv: `source backend/.venv/bin/activate`
+2. Install: `pip install <package>`
+3. Freeze: `pip freeze > backend/requirements.txt`
+
+---
+
+## Frontend development
+
+### Running the dev server
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite config proxies `/api/` and `/ws/` to `http://localhost:8000`, so you can develop with the real backend without CORS issues.
+
+### Build for production
+
+```bash
+cd frontend
+npm run build    # outputs to frontend/dist/
+```
+
+### Project layout
+
+```
+frontend/src/
+├── App.tsx              # React Router routes
+├── main.tsx             # Entry point, Zustand store hydration
+├── index.css            # Tailwind base
+├── pages/               # Full-page views (one per route)
+├── components/
+│   ├── layout/          # Header, Sidebar, Layout wrapper
+│   └── ui/              # Reusable primitives (Button, Card, StatusBadge)
+├── hooks/
+│   ├── useWebSocket.ts  # Generic WebSocket hook with reconnect
+│   └── useServerStatus.ts  # Polls /api/v1/server/status
+├── services/api.ts      # Axios instance + all typed API calls
+├── store/index.ts       # Zustand global store (auth token, server state)
+└── types/index.ts       # Shared TypeScript interfaces
+```
+
+### Type-checking
+
+```bash
+make lint
+# or
+cd frontend && npx tsc --noEmit
+```
+
+---
+
+## Code style & conventions
+
+### Backend
+
+- Follow PEP 8; use 4-space indentation.
+- Async all the way: use `async def` for all route handlers and service functions.
+- All request/response bodies are typed with **Pydantic schemas** in `models/schemas.py`.
+- Raise `HTTPException` with appropriate status codes; do not return raw error strings.
+- Business logic belongs in `services/`, not in endpoint handlers.
+- Use dependency injection (`Depends`) for auth, database sessions, and settings.
+
+### Frontend
+
+- TypeScript strict mode is enabled — no `any` types without a clear justification.
+- Functional components with hooks only; no class components.
+- API calls live in `services/api.ts`; pages do not call `axios` directly.
+- Shared types go in `types/index.ts`.
+- Use Tailwind utility classes; avoid custom CSS unless unavoidable.
+
+---
+
+## Adding a new API endpoint
+
+1. **Create or update the endpoint file** in `backend/app/api/v1/endpoints/`.
+
+   ```python
+   # backend/app/api/v1/endpoints/example.py
+   from fastapi import APIRouter, Depends
+   from app.core.security import get_current_user
+
+   router = APIRouter(prefix="/example", tags=["Example"])
+
+   @router.get("/hello")
+   async def hello(_: dict = Depends(get_current_user)):
+       return {"message": "Hello from the new endpoint"}
+   ```
+
+2. **Register it in the router** (`backend/app/api/v1/router.py`):
+
+   ```python
+   from app.api.v1.endpoints import example
+   api_router.include_router(example.router)
+   ```
+
+3. **Add request/response schemas** to `backend/app/models/schemas.py` if needed.
+
+4. **Expose it in the frontend** by adding a typed function to `frontend/src/services/api.ts`:
+
+   ```typescript
+   export const getHello = () =>
+     api.get<{ message: string }>("/example/hello").then(r => r.data);
+   ```
+
+---
+
+## Adding a new frontend page
+
+1. **Create the page component** in `frontend/src/pages/MyPage.tsx`.
+
+2. **Add the route** in `frontend/src/App.tsx`:
+
+   ```tsx
+   import MyPage from "./pages/MyPage";
+   // inside <Routes>:
+   <Route path="/my-page" element={<MyPage />} />
+   ```
+
+3. **Add a sidebar link** in `frontend/src/components/layout/Sidebar.tsx`:
+
+   ```tsx
+   { path: "/my-page", label: "My Page", icon: <SomeIcon /> }
+   ```
+
+---
+
+## Environment variables in development
+
+The backend reads `backend/.env` via `pydantic-settings`. Any variable in `backend/.env.example` can be overridden.
+
+The frontend does not use `.env` files at runtime — Vite `import.meta.env` variables are baked in at build time. The only variable used is the implicit `VITE_API_BASE` (defaulting to the same origin), which is handled via the Vite proxy in development.
+
+---
+
+## Troubleshooting
+
+### `uvicorn` fails to start — `Address already in use`
+
+Check what is using port 8000:
+
+```bash
+sudo lsof -i :8000
+```
+
+### Frontend shows "Network Error" on API calls
+
+Ensure the backend is running on port 8000 and `vite.config.ts` proxy target matches:
+
+```typescript
+proxy: {
+  "/api": "http://localhost:8000",
+  "/ws":  "http://localhost:8000",
+}
+```
+
+### SOAP commands return "Connection refused"
+
+- Confirm `SOAP.Enabled = 1` in `worldserver.conf`.
+- Confirm the worldserver is running.
+- Verify the SOAP host/port/credentials in the panel's **Settings** page.
+
+### Panel shows "Unauthorized" after a restart
+
+JWT tokens are signed with `SECRET_KEY`. If you changed `SECRET_KEY`, existing tokens are invalidated. Log in again.
+
+### Docker: backend cannot reach MySQL
+
+The backend container uses `network_mode: host`, meaning `127.0.0.1` inside the container resolves to the host. If MySQL is bound only to a specific interface, ensure it is accessible from the host's loopback or update the MySQL host in **Settings** to the correct IP.
