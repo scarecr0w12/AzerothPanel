@@ -97,7 +97,7 @@ export default function ServerControl() {
 
       {/* GM Console */}
       <Card>
-        <CardHeader title="GM Console" subtitle="Send commands to the worldserver via SOAP" />
+        <CardHeader title="GM Console" subtitle="Send commands directly to the worldserver console" />
         <div className="flex gap-2">
           <div className="flex-1 flex items-center gap-2 bg-panel-bg border border-panel-border rounded-lg px-3">
             <Terminal size={14} className="text-panel-muted shrink-0" />

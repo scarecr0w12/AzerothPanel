@@ -133,6 +133,48 @@ class TableListResponse(BaseModel):
     tables: list[str]
 
 
+class ColumnInfo(BaseModel):
+    name: str
+    type: str
+    nullable: bool          # True = YES, False = NO
+    key: str                # "PRI" | "UNI" | "MUL" | ""
+    default: Optional[str] = None
+    extra: str = ""         # "auto_increment", etc.
+
+
+class TableSchemaResponse(BaseModel):
+    database: str
+    table: str
+    columns: list[ColumnInfo]
+    pk_columns: list[str]   # convenience: column names where key == "PRI"
+
+
+class RowInsertRequest(BaseModel):
+    database: str
+    table: str
+    data: dict[str, Any]    # column -> value
+
+
+class RowUpdateRequest(BaseModel):
+    database: str
+    table: str
+    pk_columns: dict[str, Any]   # pk col -> current value (for WHERE)
+    data: dict[str, Any]         # col -> new value
+
+
+class RowDeleteRequest(BaseModel):
+    database: str
+    table: str
+    pk_columns: dict[str, Any]   # pk col -> value (for WHERE)
+
+
+class ExportRequest(BaseModel):
+    database: str
+    query: str
+    format: str = "csv"          # "csv" | "json"
+    max_rows: int = 100_000
+
+
 class BackupRequest(BaseModel):
     database: str  # "auth" | "characters" | "world" | "all"
     output_path: Optional[str] = None
@@ -208,6 +250,10 @@ class PanelSettingsResponse(BaseModel):
     # Remote Access
     AC_RA_HOST: str = "127.0.0.1"
     AC_RA_PORT: str = "3443"
+    # Paths (cont.)
+    AC_CLIENT_PATH: str = ""
+    # GitHub
+    GITHUB_TOKEN: str = ""
 
 
 class PanelSettingsUpdate(BaseModel):
@@ -241,6 +287,8 @@ class PanelSettingsUpdate(BaseModel):
     AC_SOAP_PASSWORD: Optional[str] = None
     AC_RA_HOST: Optional[str] = None
     AC_RA_PORT: Optional[str] = None
+    AC_CLIENT_PATH: Optional[str] = None
+    GITHUB_TOKEN: Optional[str] = None
 
 
 class TestDbRequest(BaseModel):

@@ -29,12 +29,31 @@ export default function LogViewer() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const addLine = useCallback((line: string) => {
+  // Buffer for incoming WS lines – flushed to state on each animation frame
+  // so bursts of many lines cause a single re-render, not one per line.
+  const pendingRef = useRef<string[]>([])
+  const rafRef = useRef<number | null>(null)
+
+  const flushPending = useCallback(() => {
+    rafRef.current = null
+    if (pendingRef.current.length === 0) return
+    const batch = pendingRef.current
+    pendingRef.current = []
     setLines((prev) => {
-      const next = [...prev, line]
+      const next = [...prev, ...batch]
       return next.length > 2000 ? next.slice(-2000) : next
     })
   }, [])
+
+  const addLine = useCallback((line: string) => {
+    pendingRef.current.push(line)
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(flushPending)
+    }
+  }, [flushPending])
+
+  // Cancel any pending raf on unmount
+  useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current) }, [])
 
   const { connected, send } = useWebSocket(`/ws/logs/${source}`, {
     onMessage: (raw) => {
@@ -53,9 +72,9 @@ export default function LogViewer() {
     send({ level: levelFilter === 'ALL' ? null : levelFilter })
   }, [levelFilter, send])
 
-  // Auto-scroll
+  // Auto-scroll – use 'instant' so rapid batched updates don't fight each other
   useEffect(() => {
-    if (liveMode) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (liveMode) bottomRef.current?.scrollIntoView({ behavior: 'instant' })
   }, [lines, liveMode])
 
   // Load historical lines when source changes.

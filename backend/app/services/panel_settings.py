@@ -20,7 +20,10 @@ DEFAULTS: dict[str, str] = {
     "AC_BUILD_PATH":       f"{boot_settings.AC_PATH}/var/build/obj",
     "AC_BINARY_PATH":      f"{boot_settings.AC_PATH}/env/dist/bin",
     "AC_CONF_PATH":        f"{boot_settings.AC_PATH}/env/dist/etc",
-    "AC_LOG_PATH":         f"{boot_settings.AC_PATH}/env/dist/logs",
+    # AzerothCore's default LogsDir="" means logs are written alongside the
+    # binaries in env/dist/bin.  This matches the default worldserver.conf
+    # setting; users who set an explicit LogsDir should update this in Settings.
+    "AC_LOG_PATH":         f"{boot_settings.AC_PATH}/env/dist/bin",
     "AC_DATA_PATH":        f"{boot_settings.AC_PATH}/env/dist/data",
     "AC_WORLDSERVER_CONF": f"{boot_settings.AC_PATH}/env/dist/etc/worldserver.conf",
     "AC_AUTHSERVER_CONF":  f"{boot_settings.AC_PATH}/env/dist/etc/authserver.conf",

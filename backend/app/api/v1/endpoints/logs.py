@@ -56,7 +56,7 @@ async def download_log(source: str, _: dict = Depends(get_current_user)):
         "worldserver": "Server.log",
         "authserver": "Auth.log",
         "gm": "GMCommands.log",
-        "db_errors": "DBErrors.log",
+        "db_errors": "Errors.log",
         "arena": "ArenaTeam.log",
         "char": "Char.log",
     }

@@ -77,11 +77,46 @@ export const playersApi = {
 // ─── Database ─────────────────────────────────────────────────────────────────
 export const dbApi = {
   tables: (database: string) => api.get(`/database/tables/${database}`),
+
+  schema: (database: string, table: string) =>
+    api.get(`/database/schema/${database}/${table}`),
+
   query: (database: string, query: string, max_rows = 500) =>
     api.post('/database/query', { database, query, max_rows }),
-  browse: (database: string, table: string, page = 1) =>
-    api.get(`/database/table/${database}/${table}`, { params: { page } }),
-  backup: (database: string) => api.post('/database/backup', null, { params: { database } }),
+
+  browse: (
+    database: string,
+    table: string,
+    page = 1,
+    order_by?: string,
+    order_dir: 'asc' | 'desc' = 'asc',
+    filters?: string,
+  ) =>
+    api.get(`/database/table/${database}/${table}`, {
+      params: { page, order_by, order_dir, filters },
+    }),
+
+  insertRow: (database: string, table: string, data: Record<string, unknown>) =>
+    api.post('/database/row', { database, table, data }),
+
+  updateRow: (
+    database: string,
+    table: string,
+    pk_columns: Record<string, unknown>,
+    data: Record<string, unknown>,
+  ) => api.put('/database/row', { database, table, pk_columns, data }),
+
+  deleteRow: (
+    database: string,
+    table: string,
+    pk_columns: Record<string, unknown>,
+  ) => api.delete('/database/row', { data: { database, table, pk_columns } }),
+
+  export: (database: string, query: string, format: 'csv' | 'json', max_rows = 100_000) =>
+    api.post('/database/export', { database, query, format, max_rows }, { responseType: 'blob' }),
+
+  backup: (database: string) =>
+    api.post('/database/backup', null, { params: { database } }),
 }
 
 // ─── Installation ─────────────────────────────────────────────────────────────
@@ -161,6 +196,47 @@ export const installStreamApi = {
       signal,
     })
   },
+}
+
+// ─── Modules ─────────────────────────────────────────────────────────────────
+export const modulesApi = {
+  catalogue: (category = 'modules', page = 1, perPage = 30) =>
+    api.get('/modules/catalogue', { params: { category, page, per_page: perPage } }),
+
+  installed: () => api.get('/modules/installed'),
+
+  rateLimit: () => api.get('/modules/github/rate-limit'),
+
+  /**
+   * Stream git clone output as SSE.
+   */
+  install: (clone_url: string, module_name: string, branch?: string, signal?: AbortSignal) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/modules/install', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ clone_url, module_name, branch: branch ?? null }),
+      signal,
+    })
+  },
+
+  remove: (moduleName: string) =>
+    api.delete(`/modules/${encodeURIComponent(moduleName)}`),
+}
+
+// ─── Config Files ─────────────────────────────────────────────────────────────
+// rel can contain '/' (e.g. "modules/mod_something.conf") – encode each segment.
+const _confPath = (rel: string) =>
+  rel.split('/').map(encodeURIComponent).join('/')
+
+export const configsApi = {
+  list: () => api.get('/configs'),
+  get: (rel: string) => api.get(`/configs/${_confPath(rel)}`),
+  save: (rel: string, content: string) =>
+    api.put(`/configs/${_confPath(rel)}`, { content }),
 }
 
 // ─── Data Extraction ─────────────────────────────────────────────────────────

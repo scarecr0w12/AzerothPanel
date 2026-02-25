@@ -8,7 +8,6 @@ from app.models.schemas import (
     SoapCommandResponse,
 )
 from app.services.azerothcore import server_manager as sm
-from app.services.azerothcore import soap_client as soap
 
 router = APIRouter(prefix="/server", tags=["Server Control"])
 
@@ -74,21 +73,21 @@ async def restart_authserver(_: dict = Depends(get_current_user)):
 async def execute_command(
     req: SoapCommandRequest, _: dict = Depends(get_current_user)
 ):
-    """Send any GM command to the worldserver via SOAP."""
-    ok, result = await soap.execute_command(req.command)
+    """Send any GM command directly to the worldserver console (stdin)."""
+    ok, result = await sm.send_console_command("worldserver", req.command)
     return SoapCommandResponse(success=ok, result=result)
 
 
 @router.get("/info")
 async def server_info(_: dict = Depends(get_current_user)):
-    """Fetch worldserver runtime info via SOAP (.server info)."""
-    ok, result = await soap.get_server_info()
+    """Send 'server info' directly to the worldserver console."""
+    ok, result = await sm.send_console_command("worldserver", "server info")
     return {"success": ok, "info": result}
 
 
 @router.post("/announce")
 async def announce(req: SoapCommandRequest, _: dict = Depends(get_current_user)):
-    """Send a server-wide announcement message."""
-    ok, result = await soap.send_announcement(req.command)
+    """Send a server-wide announcement via the worldserver console."""
+    ok, result = await sm.send_console_command("worldserver", f"announce {req.command}")
     return {"success": ok, "result": result}
 

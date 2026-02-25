@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, XCircle, Loader2, Save, RefreshCw } from 'lucide-react'
-import { settingsApi } from '@/services/api'
+import { CheckCircle, XCircle, Loader2, Save, RefreshCw, Github } from 'lucide-react'
+import { settingsApi, modulesApi } from '@/services/api'
 import type { PanelSettings } from '@/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,6 +80,49 @@ function TestDbButton({
 
 
 
+// ─── Test GitHub token button ─────────────────────────────────────────────────
+
+function TestGithubButton() {
+  const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const [msg, setMsg] = useState('')
+
+  const test = async () => {
+    setState('loading')
+    try {
+      const res = await modulesApi.rateLimit()
+      const d = res.data as { limit: number; remaining: number; authenticated: boolean }
+      if (d.authenticated) {
+        setState('ok')
+        setMsg(`Token valid — ${d.remaining}/${d.limit} requests remaining`)
+      } else {
+        setState('ok')
+        setMsg(`No token — ${d.remaining}/${d.limit} requests remaining (unauthenticated)`)
+      }
+    } catch {
+      setState('error')
+      setMsg('Failed to reach GitHub API')
+    }
+    setTimeout(() => setState('idle'), 6000)
+  }
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <button
+        onClick={test}
+        disabled={state === 'loading'}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                   bg-panel-hover text-gray-300 hover:text-white border border-panel-border
+                   disabled:opacity-50 transition-colors"
+      >
+        {state === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+        Test Token / Rate Limit
+      </button>
+      {state === 'ok'    && <span className="flex items-center gap-1 text-xs text-success"><CheckCircle size={13}/>{msg}</span>}
+      {state === 'error' && <span className="flex items-center gap-1 text-xs text-danger"><XCircle size={13}/>{msg}</span>}
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const EMPTY: PanelSettings = {
@@ -94,6 +137,7 @@ const EMPTY: PanelSettings = {
   AC_WORLD_DB_PASSWORD: '', AC_WORLD_DB_NAME: '',
   AC_SOAP_HOST: '', AC_SOAP_PORT: '7878', AC_SOAP_USER: '', AC_SOAP_PASSWORD: '',
   AC_RA_HOST: '', AC_RA_PORT: '3443',
+  GITHUB_TOKEN: '',
 }
 
 export default function Settings() {
@@ -235,6 +279,46 @@ export default function Settings() {
         <Field label="GM Account"    name="AC_SOAP_USER"     value={form.AC_SOAP_USER}     onChange={set} />
         <Field label="GM Password"   name="AC_SOAP_PASSWORD" value={form.AC_SOAP_PASSWORD} onChange={set} type="password" />
       </SectionCard>
+
+      {/* ── GitHub ── */}
+      <div className="bg-panel-surface border border-panel-border rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-panel-border">
+          <Github size={15} className="text-white" />
+          <h3 className="text-sm font-semibold text-white">GitHub Integration</h3>
+        </div>
+        <p className="text-xs text-panel-muted mb-4">
+          Unauthenticated GitHub API requests are rate-limited to <strong className="text-white">10 searches/minute</strong>.
+          Providing a Personal Access Token raises this to <strong className="text-white">30 searches/minute</strong> and
+          is required for browsing the module catalogue reliably.
+          Create a token at{' '}
+          <a
+            href="https://github.com/settings/tokens"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand-light hover:underline"
+          >
+            github.com/settings/tokens
+          </a>{' '}
+          (no scopes required for public repo search).
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className="block text-xs text-panel-muted mb-1">Personal Access Token</label>
+            <input
+              type="password"
+              value={form.GITHUB_TOKEN}
+              onChange={e => set('GITHUB_TOKEN', e.target.value)}
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              className="w-full bg-panel-bg border border-panel-border rounded-lg px-3 py-2
+                         text-sm text-white placeholder-panel-muted
+                         focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand font-mono"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <TestGithubButton />
+          </div>
+        </div>
+      </div>
 
       {/* ── Save footer ── */}
       <div className="flex justify-end pb-4">

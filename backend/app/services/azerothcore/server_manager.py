@@ -39,6 +39,11 @@ _start_times: dict[str, Optional[float]] = {
     "worldserver": None,
     "authserver": None,
 }
+# stdin writers for processes launched by the panel (used for console commands)
+_stdin_writers: dict[str, Optional[asyncio.StreamWriter]] = {
+    "worldserver": None,
+    "authserver": None,
+}
 
 
 def _find_pid(name: str) -> Optional[int]:
@@ -140,11 +145,13 @@ async def _launch(name: str) -> tuple[bool, str]:
             binary,
             cwd=cwd,
             env=env,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=stderr_file,
             start_new_session=True,   # detach from panel's session
         )
         _processes[name] = proc
+        _stdin_writers[name] = proc.stdin
         _start_times[name] = time.time()
         
         # Close the file handle but keep the file for reading later
@@ -197,9 +204,42 @@ async def _launch(name: str) -> tuple[bool, str]:
         return False, f"Failed to start {name}: {str(e)}"
 
 
+async def send_console_command(name: str, command: str) -> tuple[bool, str]:
+    """
+    Write a command directly to the worldserver/authserver stdin (console).
+    Only works for processes started by this panel session.
+    """
+    writer = _stdin_writers.get(name)
+    if writer is None or writer.is_closing():
+        # Process not started by this panel session – give a clear message
+        return False, (
+            f"{name} console is not available. "
+            "Start the server from the panel so its stdin pipe is attached, "
+            "then retry."
+        )
+    try:
+        line = command.strip() + "\n"
+        writer.write(line.encode())
+        await writer.drain()
+        logger.info(f"Console command sent to {name}: {command!r}")
+        return True, f"Command sent to {name} console: {command}"
+    except Exception as exc:
+        logger.error(f"Failed to write to {name} stdin: {exc}")
+        _stdin_writers[name] = None
+        return False, f"Failed to send command: {exc}"
+
+
 async def _stop(name: str) -> tuple[bool, str]:
     logger.info(f"Attempting to stop {name}")
-    
+    # Close the stdin pipe if open
+    writer = _stdin_writers.get(name)
+    if writer and not writer.is_closing():
+        try:
+            writer.close()
+        except Exception:
+            pass
+    _stdin_writers[name] = None
+
     pid = _find_pid(name)
     if pid is None:
         logger.info(f"{name} is not running")
