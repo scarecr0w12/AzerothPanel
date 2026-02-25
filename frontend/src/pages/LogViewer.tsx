@@ -58,11 +58,14 @@ export default function LogViewer() {
     if (liveMode) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [lines, liveMode])
 
-  // Load historical lines when source changes
+  // Load historical lines when source changes.
+  // Prepend to current state so any WS lines that arrived while the HTTP
+  // request was in-flight are not discarded.
   useEffect(() => {
     setLines([])
     logsApi.tail(source, 300).then(({ data }) => {
-      setLines(data.entries.map((e: { message: string }) => e.message))
+      const historical = data.entries.map((e: { message: string }) => e.message)
+      setLines((prev) => [...historical, ...prev])
     }).catch(() => {})
   }, [source])
 

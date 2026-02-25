@@ -25,10 +25,3 @@ aiofiles==24.1.0
 # Process monitoring
 psutil==6.1.0
 
-# Task queue
-celery==5.4.0
-redis==5.2.0
-
-# SSH client (optional, for remote servers)
-asyncssh==2.18.0
-

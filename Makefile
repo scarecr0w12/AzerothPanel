@@ -1,4 +1,4 @@
-.PHONY: help install dev backend frontend lint check docker-up docker-down docker-build docker-logs docker-restart
+.PHONY: help install dev backend frontend lint check docker-up docker-down docker-build docker-logs docker-restart docker-quick
 
 help:
 	@echo "AzerothPanel – Available commands"
@@ -10,6 +10,7 @@ help:
 	@echo "  make lint           Run TypeScript type-check on frontend"
 	@echo ""
 	@echo "  make docker-build   Build Docker images (no cache)"
+	@echo "  make docker-quick   Build Docker images (with cache - much faster!)"
 	@echo "  make docker-up      Build & start containers in background"
 	@echo "  make docker-down    Stop and remove containers"
 	@echo "  make docker-logs    Tail logs from all containers"
@@ -55,9 +56,17 @@ check: lint
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 
+# Enable BuildKit for all docker commands (required for cache mounts)
+export DOCKER_BUILDKIT := 1
+export COMPOSE_DOCKER_CLI_BUILD := 1
+
 docker-build:
-	@echo "→ Building Docker images…"
+	@echo "→ Building Docker images (no cache)…"
 	docker compose build --no-cache
+
+docker-quick:
+	@echo "→ Building Docker images (with cache - fast!)…"
+	docker compose build
 
 docker-up:
 	@echo "→ Starting AzerothPanel in Docker…"

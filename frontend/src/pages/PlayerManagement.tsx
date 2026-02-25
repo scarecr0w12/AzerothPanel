@@ -4,7 +4,7 @@ import { Search, Ban, LogOut, MessageSquare, ChevronLeft, ChevronRight } from 'l
 import { playersApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { RACE_NAMES, CLASS_NAMES, CLASS_COLORS } from '@/types'
+import { RACE_NAMES, CLASS_NAMES, CLASS_COLORS, ZONE_NAMES } from '@/types'
 import type { Account, Character } from '@/types'
 
 type Tab = 'accounts' | 'characters'
@@ -109,7 +109,7 @@ export default function PlayerManagement() {
                       <span style={{ color: CLASS_COLORS[c.class] }}>{CLASS_NAMES[c.class] ?? c.class}</span>
                     </td>
                     <td className="px-4 py-2.5 font-mono">{c.level}</td>
-                    <td className="px-4 py-2.5 text-panel-muted">{c.zone}</td>
+                    <td className="px-4 py-2.5 text-panel-muted">{ZONE_NAMES[c.zone] ?? c.zone}</td>
                     <td className="px-4 py-2.5">
                       <span className={`text-xs font-medium ${c.online ? 'text-success' : 'text-panel-muted'}`}>
                         {c.online ? '● Online' : '○ Offline'}

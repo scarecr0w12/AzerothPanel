@@ -24,10 +24,12 @@ _APT_BUILD_DEPS = (
     "libssl-dev libbz2-dev libreadline-dev libncurses-dev libboost-all-dev"
 )
 
-# From the MySQL 8 APT repo
-_APT_MYSQL_DEPS = "mysql-client libmysqlclient-dev"
+# MySQL client and development libraries
+# Use the system default MySQL packages to ensure library version consistency
+_APT_MYSQL_DEPS = "default-libmysqlclient-dev libmysqlclient-dev mysql-client"
 
 # MySQL APT config package (https://dev.mysql.com/downloads/repo/apt/)
+# Note: We keep this for mysql-client but use system libmysqlclient for consistency
 _MYSQL_APT_CONFIG_VERSION = "0.8.36-1"
 _MYSQL_APT_CONFIG_DEB = f"mysql-apt-config_{_MYSQL_APT_CONFIG_VERSION}_all.deb"
 _MYSQL_APT_CONFIG_URL = f"https://dev.mysql.com/get/{_MYSQL_APT_CONFIG_DEB}"
@@ -106,8 +108,8 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
     from app.models.schemas import REPO_STANDARD, REPO_PLAYERBOT
 
     ac_path     = Path(config.get("ac_path",      "/opt/azerothcore"))
-    build_dir   = ac_path / "build"
-    install_dir = ac_path / "build"   # cmake prefix → binaries at install_dir/bin
+    build_dir   = ac_path / "var" / "build" / "obj"
+    install_dir = ac_path / "env" / "dist"   # cmake prefix → binaries at install_dir/bin
     repo_url    = config.get("repository_url", REPO_STANDARD)
     # Playerbot fork must be cloned from its dedicated branch
     default_branch = "Playerbot" if repo_url == REPO_PLAYERBOT else "master"
@@ -117,8 +119,26 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
     db_user      = config.get("db_user",          "acore")
     db_pass      = config.get("db_password",      "acore")
 
-    # Build the mysql root auth flags once — no -p flag at all when root has no password
-    root_auth = f"-h {db_host} -u root" + (f" -p'{db_root_pass}'" if db_root_pass else "")
+    # Build the mysql root auth flags once.
+    #
+    # Debian/Ubuntu install MySQL with root using the auth_socket plugin,
+    # meaning root can ONLY connect via the UNIX socket as the matching OS user
+    # (i.e. `mysql` with no -h/-u, run as OS root).  Passing -h 127.0.0.1
+    # forces a TCP connection which auth_socket rejects with ERROR 1698.
+    #
+    # Rules:
+    #   password given          → TCP with -h HOST -u root -p'PASS'
+    #   no password, remote host → TCP with -h HOST -u root (unusual but possible)
+    #   no password, local host  → UNIX socket; omit -h and -u so the client
+    #                              authenticates as the current OS user (root)
+    _local_hosts = {"127.0.0.1", "localhost", "::1", ""}
+    if db_root_pass:
+        root_auth = f"-h {db_host} -u root -p'{db_root_pass}'"
+    elif db_host not in _local_hosts:
+        root_auth = f"-h {db_host} -u root"
+    else:
+        # Local, no password — rely on UNIX socket + auth_socket / native auth
+        root_auth = ""
 
     NI = {"DEBIAN_FRONTEND": "noninteractive"}
 
@@ -141,39 +161,16 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
     if rc and rc[0] != 0:
         yield "[error] Bootstrap install failed — aborting."; return
 
-    # 1c – register the MySQL 8 official APT repository for Debian
-    yield "[dependencies] Adding MySQL 8 APT repository..."
-    rc = []
-    mysql_repo_cmd = (
-        f"bash -c '"
-        f"cd /tmp && "
-        f"wget -q -O {_MYSQL_APT_CONFIG_DEB} {_MYSQL_APT_CONFIG_URL} && "
-        f"DEBIAN_FRONTEND=noninteractive dpkg -i {_MYSQL_APT_CONFIG_DEB} && "
-        f"rm -f {_MYSQL_APT_CONFIG_DEB}"
-        f"'"
-    )
-    async for line in _run(mysql_repo_cmd, rc_out=rc):
-        yield f"[dependencies] {line}"
-    if rc and rc[0] != 0:
-        yield "[error] Failed to add MySQL 8 APT repository — aborting."; return
-
-    # 1d – refresh index again (now includes MySQL 8)
-    yield "[dependencies] Updating package index (with MySQL 8 repo)..."
-    rc = []
-    async for line in _run("apt-get update", rc_out=rc):
-        yield f"[dependencies] {line}"
-    if rc and rc[0] != 0:
-        yield "[error] apt-get update (post-MySQL repo) failed — aborting."; return
-
-    # 1e – MySQL packages
-    yield "[dependencies] Installing MySQL packages..."
+    # 1c – Install MySQL client and development libraries from system packages
+    # Using system packages ensures library version consistency at compile and runtime
+    yield "[dependencies] Installing MySQL client and development libraries..."
     rc = []
     async for line in _run(f"apt-get install -y {_APT_MYSQL_DEPS}", extra_env=NI, rc_out=rc):
         yield f"[dependencies] {line}"
     if rc and rc[0] != 0:
         yield "[error] MySQL package install failed — aborting."; return
 
-    # 1f – compiler, cmake, and remaining build tools
+    # 1d – compiler, cmake, and remaining build tools
     yield "[dependencies] Installing build tools..."
     rc = []
     async for line in _run(f"apt-get install -y {_APT_BUILD_DEPS}", extra_env=NI, rc_out=rc):
@@ -199,7 +196,8 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
         if ac_path.exists():
             yield f"[step:clone] {ac_path} exists but is not a git repo — clearing contents..."
             rc = []
-            async for line in _run(f"bash -c 'find {ac_path} -mindepth 1 -delete'", rc_out=rc):
+            # Use rm -rf for more reliable deletion, then recreate the empty directory
+            async for line in _run(f"rm -rf {ac_path} && mkdir -p {ac_path}", rc_out=rc):
                 yield f"[clone] {line}"
             if rc and rc[0] != 0:
                 yield "[error] Failed to clear directory contents — aborting."; return
@@ -242,6 +240,14 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
         yield "[module] mod-playerbots module ready."
 
     # ── Step 3: cmake configure ───────────────────────────────────────────────
+    # Clear the build directory to ensure no stale CMake cache persists
+    if build_dir.exists():
+        yield "[cmake] Clearing build directory to remove stale CMake cache..."
+        rc = []
+        async for line in _run(f"rm -rf {build_dir}/*", rc_out=rc):
+            yield f"[cmake] {line}"
+        if rc and rc[0] != 0:
+            yield "[error] Failed to clear build directory — aborting."; return
     build_dir.mkdir(parents=True, exist_ok=True)
     yield "[step:cmake] Configuring with cmake..."
     cmake_cmd = (
@@ -285,25 +291,52 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
     yield "[step:db_create] Creating AzerothCore databases..."
     # Always use inline SQL so the configured db_user/db_password are applied
     # correctly regardless of what is in the repo's create_mysql.sql.
+
+    # 6a – Relax validate_password policy so simple passwords (e.g. "acore")
+    #      are accepted.  mysql --force means the command exits 0 even when the
+    #      validate_password component/plugin is not installed and the SET GLOBAL
+    #      variables are unknown — safe to ignore either way.
+    yield "[db_create] Relaxing validate_password policy (if installed)..."
+    _policy_off = (
+        "SET GLOBAL validate_password.policy = LOW; "
+        "SET GLOBAL validate_password.length  = 1;"
+    )
+    async for _line in _run(f"mysql {root_auth} --force -e \"{_policy_off}\"", rc_out=[]):
+        pass  # output is not meaningful; errors are expected when plugin absent
+
+    # 6b – Create databases, user and grants.
     rc = []
     yield "[db_create] Creating databases and user via SQL..."
+    # Include playerbots database if using playerbot fork
+    playerbots_db_create = ""
+    playerbots_db_grant = ""
+    if repo_url == REPO_PLAYERBOT:
+        playerbots_db_create = "CREATE DATABASE IF NOT EXISTS acore_playerbots CHARACTER SET utf8mb4; "
+        playerbots_db_grant = f"GRANT ALL ON acore_playerbots.* TO '{db_user}'@'%'; "
     inline = (
-        f"CREATE DATABASE IF NOT EXISTS acore_auth CHARACTER SET utf8mb4; "
+        f"CREATE DATABASE IF NOT EXISTS acore_auth       CHARACTER SET utf8mb4; "
         f"CREATE DATABASE IF NOT EXISTS acore_characters CHARACTER SET utf8mb4; "
-        f"CREATE DATABASE IF NOT EXISTS acore_world CHARACTER SET utf8mb4; "
+        f"CREATE DATABASE IF NOT EXISTS acore_world      CHARACTER SET utf8mb4; "
+        f"{playerbots_db_create}"
         f"CREATE USER IF NOT EXISTS '{db_user}'@'%' IDENTIFIED BY '{db_pass}'; "
-        f"GRANT ALL ON acore_auth.* TO '{db_user}'@'%'; "
+        f"GRANT ALL ON acore_auth.*       TO '{db_user}'@'%'; "
         f"GRANT ALL ON acore_characters.* TO '{db_user}'@'%'; "
-        f"GRANT ALL ON acore_world.* TO '{db_user}'@'%'; "
+        f"GRANT ALL ON acore_world.*      TO '{db_user}'@'%'; "
+        f"{playerbots_db_grant}"
         f"FLUSH PRIVILEGES;"
     )
-    async for line in _run(
-        f"mysql {root_auth} -e \"{inline}\"",
-        rc_out=rc,
-    ):
+    async for line in _run(f"mysql {root_auth} -e \"{inline}\"", rc_out=rc):
         yield f"[db_create] {line}"
     if rc and rc[0] != 0:
         yield "[error] Database creation failed — aborting."; return
+
+    # 6c – Restore validate_password policy to the MySQL default (MEDIUM / 8).
+    _policy_on = (
+        "SET GLOBAL validate_password.policy = MEDIUM; "
+        "SET GLOBAL validate_password.length  = 8;"
+    )
+    async for _line in _run(f"mysql {root_auth} --force -e \"{_policy_on}\"", rc_out=[]):
+        pass
 
     # ── Step 7: Import SQL data ───────────────────────────────────────────────
     # authserver/worldserver auto-apply SQL on first start; db_assembler does a
@@ -323,6 +356,55 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
             "Servers will auto-populate databases on first start."
         )
 
+    # ── Step 7b: Import playerbots SQL (playerbot fork only) ───────────────────
+    if repo_url == REPO_PLAYERBOT:
+        yield "[step:playerbots_sql] Importing playerbots module SQL..."
+        playerbots_sql_base = ac_path / "modules" / "mod-playerbots" / "data" / "sql"
+        
+        # Import playerbots database base SQL
+        playerbots_db_base = playerbots_sql_base / "playerbots" / "base"
+        if playerbots_db_base.exists():
+            for sql_file in sorted(playerbots_db_base.glob("*.sql")):
+                yield f"[playerbots_sql] Importing {sql_file.name}..."
+                rc = []
+                async for line in _run(
+                    f"mysql acore_playerbots < {sql_file}",
+                    cwd=str(ac_path), rc_out=rc
+                ):
+                    yield f"[playerbots_sql] {line}"
+                if rc and rc[0] != 0:
+                    yield f"[playerbots_sql] Warning: {sql_file.name} import returned non-zero."
+        
+        # Import world database additions from playerbots module
+        playerbots_world_base = playerbots_sql_base / "world" / "base"
+        if playerbots_world_base.exists():
+            for sql_file in sorted(playerbots_world_base.glob("*.sql")):
+                yield f"[playerbots_sql] Importing world/{sql_file.name}..."
+                rc = []
+                async for line in _run(
+                    f"mysql acore_world < {sql_file}",
+                    cwd=str(ac_path), rc_out=rc
+                ):
+                    yield f"[playerbots_sql] {line}"
+                if rc and rc[0] != 0:
+                    yield f"[playerbots_sql] Warning: world/{sql_file.name} import returned non-zero."
+        
+        # Import characters database additions from playerbots module
+        playerbots_chars_base = playerbots_sql_base / "characters" / "base"
+        if playerbots_chars_base.exists():
+            for sql_file in sorted(playerbots_chars_base.glob("*.sql")):
+                yield f"[playerbots_sql] Importing characters/{sql_file.name}..."
+                rc = []
+                async for line in _run(
+                    f"mysql acore_characters < {sql_file}",
+                    cwd=str(ac_path), rc_out=rc
+                ):
+                    yield f"[playerbots_sql] {line}"
+                if rc and rc[0] != 0:
+                    yield f"[playerbots_sql] Warning: characters/{sql_file.name} import returned non-zero."
+        
+        yield "[playerbots_sql] Playerbots SQL import complete."
+
     # ── Step 8: Generate config files ────────────────────────────────────────
     yield "[step:conf_generate] Generating configuration files..."
     etc_path = install_dir / "etc"
@@ -334,5 +416,24 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
             yield f"[conf_generate] Created {target.name}"
         else:
             yield f"[conf_generate] {target.name} already exists — skipping."
+    
+    # Also handle module config files (e.g., playerbots.conf.dist)
+    modules_etc = etc_path / "modules"
+    if modules_etc.exists():
+        for dist_file in sorted(modules_etc.glob("*.conf.dist")):
+            target = dist_file.with_suffix("")
+            if not target.exists():
+                target.write_bytes(dist_file.read_bytes())
+                yield f"[conf_generate] Created modules/{target.name}"
+            else:
+                yield f"[conf_generate] modules/{target.name} already exists — skipping."
+
+    # ── Step 9: Ensure log and data directories exist ───────────────────────
+    log_dir = install_dir / "logs"
+    data_dir = install_dir / "data"
+    for d in (log_dir, data_dir):
+        if not d.exists():
+            d.mkdir(parents=True, exist_ok=True)
+            yield f"[setup] Created directory: {d}"
 
     yield "[done] AzerothCore installation complete!"

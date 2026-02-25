@@ -16,7 +16,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
 
 from app.core.config import settings
-from app.services.logs.log_manager import tail_follow
+from app.services.logs import tail_follow
 
 router = APIRouter()
 ALGORITHM = "HS256"

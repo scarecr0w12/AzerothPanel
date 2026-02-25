@@ -16,15 +16,62 @@ from app.models.schemas import SqlQueryRequest, SqlQueryResponse, TableListRespo
 
 router = APIRouter(prefix="/database", tags=["Database Management"])
 
-# Safety: block destructive single-table drops without WHERE
-_BLOCKED_PATTERNS = ["DROP DATABASE", "SHUTDOWN", "RESET MASTER", "RESET SLAVE"]
+# Safety: block destructive operations
+# These patterns are blocked to prevent accidental data loss or modification
+_BLOCKED_PATTERNS = [
+    "DROP DATABASE",
+    "DROP TABLE",
+    "DROP USER",
+    "SHUTDOWN",
+    "RESET MASTER",
+    "RESET SLAVE",
+    "TRUNCATE",
+]
+
+# Patterns that indicate write operations (blocked in read-only mode)
+_WRITE_PATTERNS = [
+    "INSERT INTO",
+    "UPDATE ",
+    "UPDATE\n",
+    "DELETE FROM",
+    "DELETE\n",
+    "ALTER TABLE",
+    "ALTER USER",
+    "CREATE TABLE",
+    "CREATE DATABASE",
+    "CREATE USER",
+    "GRANT ",
+    "REVOKE ",
+]
 
 
 def _safety_check(query: str) -> None:
+    """
+    Check if a query contains blocked patterns.
+    Raises HTTPException if the query is blocked.
+    """
     upper = query.upper().strip()
+    
+    # Check for absolutely blocked patterns
     for pat in _BLOCKED_PATTERNS:
         if pat in upper:
-            raise HTTPException(status_code=403, detail=f"Query blocked for safety: contains '{pat}'")
+            raise HTTPException(
+                status_code=403,
+                detail=f"Query blocked for safety: contains '{pat}'"
+            )
+    
+    # Check for write operations - only allow SELECT, SHOW, DESCRIBE, EXPLAIN
+    first_word = upper.split()[0] if upper.split() else ""
+    allowed_first_words = {"SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH"}
+    
+    if first_word not in allowed_first_words:
+        # Check if it matches any write pattern
+        for pat in _WRITE_PATTERNS:
+            if upper.startswith(pat.strip()):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Write operations are not allowed. Query starts with '{first_word}'"
+                )
 
 
 @router.get("/tables/{database}", response_model=TableListResponse)
@@ -55,7 +102,8 @@ async def execute_query(
 ):
     """
     Execute a SQL query against an AzerothCore database.
-    SELECT queries return rows; others return affected row count.
+    Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are allowed.
+    Write operations (INSERT, UPDATE, DELETE, etc.) are blocked for safety.
     """
     _safety_check(req.query)
     db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db}
@@ -63,27 +111,20 @@ async def execute_query(
     if db is None:
         raise HTTPException(status_code=400, detail="Unknown database")
 
-    is_select = req.query.strip().upper().startswith("SELECT")
     start = time.monotonic()
     try:
         result = await db.execute(text(req.query))
-        if not is_select:
-            await db.commit()
         elapsed = (time.monotonic() - start) * 1000
 
-        if is_select:
-            columns = list(result.keys())
-            rows: list[list[Any]] = [list(r) for r in result.fetchmany(req.max_rows)]
-        else:
-            columns = ["affected_rows"]
-            rows = [[result.rowcount]]
+        columns = list(result.keys())
+        rows: list[list[Any]] = [list(r) for r in result.fetchmany(req.max_rows)]
 
         return SqlQueryResponse(
             columns=columns,
             rows=rows,
             row_count=len(rows),
             execution_time_ms=round(elapsed, 2),
-            is_select=is_select,
+            is_select=True,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Query error: {exc}")
@@ -106,6 +147,7 @@ async def browse_table(
     if db is None:
         raise HTTPException(status_code=400, detail="Unknown database")
     offset = (page - 1) * page_size
+    start = time.monotonic()
     try:
         result = await db.execute(
             text(f"SELECT * FROM `{table_name}` LIMIT :lim OFFSET :off"),
@@ -115,7 +157,17 @@ async def browse_table(
         rows = [list(r) for r in result.fetchall()]
         count_result = await db.execute(text(f"SELECT COUNT(*) FROM `{table_name}`"))
         total = count_result.scalar()
-        return {"columns": columns, "rows": rows, "total": total, "page": page, "page_size": page_size}
+        elapsed = (time.monotonic() - start) * 1000
+        return {
+            "columns": columns,
+            "rows": rows,
+            "row_count": len(rows),
+            "execution_time_ms": round(elapsed, 2),
+            "is_select": True,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

@@ -160,5 +160,53 @@ export const installStreamApi = {
       body: JSON.stringify(config),
       signal,
     })
-  },}
+  },
+}
+
+// ─── Data Extraction ─────────────────────────────────────────────────────────
+export const dataExtractionApi = {
+  status: () => api.get('/data-extraction/status'),
+  cancel: () => api.post('/data-extraction/cancel'),
+  /**
+   * Download pre-extracted data and return the raw fetch Response (SSE stream).
+   */
+  download: (dataPath?: string, dataUrl?: string, signal?: AbortSignal) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/data-extraction/download', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ data_path: dataPath, data_url: dataUrl }),
+      signal,
+    })
+  },
+  /**
+   * Extract from local client and return the raw fetch Response (SSE stream).
+   */
+  extract: (
+    config: {
+      client_path?: string
+      data_path?: string
+      binary_path?: string
+      extract_dbc?: boolean
+      extract_maps?: boolean
+      extract_vmaps?: boolean
+      generate_mmaps?: boolean
+    },
+    signal?: AbortSignal,
+  ) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/data-extraction/extract', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(config),
+      signal,
+    })
+  },
+}
 

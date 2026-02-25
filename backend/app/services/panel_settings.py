@@ -9,20 +9,22 @@ remain in .env.
 from __future__ import annotations
 
 from sqlalchemy import select
+from app.core.config import settings as boot_settings
 
 # ---------------------------------------------------------------------------
 # Default values for every runtime setting
 # ---------------------------------------------------------------------------
 DEFAULTS: dict[str, str] = {
     # AzerothCore file paths
-    "AC_PATH":             "/opt/azerothcore",
-    "AC_BUILD_PATH":       "/opt/azerothcore/build",
-    "AC_BINARY_PATH":      "/opt/azerothcore/build/bin",
-    "AC_CONF_PATH":        "/opt/azerothcore/build/etc",
-    "AC_LOG_PATH":         "/opt/azerothcore/build/logs",
-    "AC_DATA_PATH":        "/opt/azerothcore/build/data",
-    "AC_WORLDSERVER_CONF": "/opt/azerothcore/build/etc/worldserver.conf",
-    "AC_AUTHSERVER_CONF":  "/opt/azerothcore/build/etc/authserver.conf",
+    "AC_PATH":             boot_settings.AC_PATH,
+    "AC_BUILD_PATH":       f"{boot_settings.AC_PATH}/var/build/obj",
+    "AC_BINARY_PATH":      f"{boot_settings.AC_PATH}/env/dist/bin",
+    "AC_CONF_PATH":        f"{boot_settings.AC_PATH}/env/dist/etc",
+    "AC_LOG_PATH":         f"{boot_settings.AC_PATH}/env/dist/logs",
+    "AC_DATA_PATH":        f"{boot_settings.AC_PATH}/env/dist/data",
+    "AC_WORLDSERVER_CONF": f"{boot_settings.AC_PATH}/env/dist/etc/worldserver.conf",
+    "AC_AUTHSERVER_CONF":  f"{boot_settings.AC_PATH}/env/dist/etc/authserver.conf",
+    "AC_CLIENT_PATH":      boot_settings.CLIENT_PATH,  # Path to WoW 3.3.5a client for data extraction
     # Auth database
     "AC_AUTH_DB_HOST":     "127.0.0.1",
     "AC_AUTH_DB_PORT":     "3306",

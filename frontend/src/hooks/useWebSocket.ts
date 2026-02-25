@@ -15,6 +15,16 @@ export function useWebSocket(path: string, options: Options = {}) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeRef = useRef(true)
 
+  // Keep option callbacks in refs so they never need to be listed as
+  // dependencies of `connect` – avoids a reconnect loop when the caller
+  // passes an inline object literal (new reference every render).
+  const onMessageRef = useRef(options.onMessage)
+  const autoReconnectRef = useRef(options.autoReconnect)
+  const reconnectDelayRef = useRef(options.reconnectDelay)
+  useEffect(() => { onMessageRef.current = options.onMessage })
+  useEffect(() => { autoReconnectRef.current = options.autoReconnect })
+  useEffect(() => { reconnectDelayRef.current = options.reconnectDelay })
+
   const connect = useCallback(() => {
     if (!token || !activeRef.current) return
 
@@ -31,7 +41,7 @@ export function useWebSocket(path: string, options: Options = {}) {
     }
 
     ws.onmessage = (ev) => {
-      options.onMessage?.(ev.data)
+      onMessageRef.current?.(ev.data)
     }
 
     ws.onerror = () => {
@@ -44,11 +54,11 @@ export function useWebSocket(path: string, options: Options = {}) {
         setError('Unauthorized – please log in again')
         return
       }
-      if (options.autoReconnect !== false && activeRef.current) {
-        reconnectTimer.current = setTimeout(connect, options.reconnectDelay ?? 3000)
+      if (autoReconnectRef.current !== false && activeRef.current) {
+        reconnectTimer.current = setTimeout(connect, reconnectDelayRef.current ?? 3000)
       }
     }
-  }, [path, token, options])
+  }, [path, token])  // options intentionally excluded – accessed via refs above
 
   useEffect(() => {
     activeRef.current = true

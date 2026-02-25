@@ -72,6 +72,10 @@ cp backend/.env.example backend/.env
 # Absolute path to your AzerothCore installation on the HOST machine
 AC_PATH=/opt/azerothcore
 
+# Path to your WoW 3.3.5a client (for data extraction from local client)
+# Leave as default if you don't have a client (use download method instead)
+CLIENT_PATH=/root/clientdata
+
 # Port the panel is exposed on (change if 80 is already in use)
 PANEL_PORT=80
 ```
@@ -108,10 +112,28 @@ The panel is available at `http://<your-host>:80` (or `PANEL_PORT`).
 1. Open the panel URL in your browser.
 2. Log in with the credentials from `PANEL_ADMIN_USER` / `PANEL_ADMIN_PASSWORD`.
 3. Go to **Settings** and fill in:
-   - AzerothCore installation path (pre-filled with `AC_PATH` value)
-   - MySQL connection details for auth, world, and characters databases
-   - SOAP connection details
+    - AzerothCore installation path (pre-filled with `AC_PATH` value)
+    - MySQL connection details for auth, world, and characters databases
+    - SOAP connection details
 4. Click **Test Connection** to verify, then **Save**.
+
+### 5. Client Data Extraction
+
+Before starting the servers, you need client data files (DBC, Maps, VMaps, MMaps). Go to **Data Extraction** in the sidebar:
+
+**Option A: Download Pre-Extracted Data (Recommended)**
+- Click "Download Data" to fetch pre-extracted data from AzerothCore releases (~1.5GB)
+- Takes 2-10 minutes depending on your connection
+- No WoW client required
+
+**Option B: Extract from Local Client**
+- If you have a World of Warcraft 3.3.5a (12340) client installed
+- Set `CLIENT_PATH` in your `.env` file to point to your WoW client directory
+- The path is mounted read-only into the Docker container
+- Select which data types to extract in the Data Extraction page
+- Note: MMaps generation takes 30-60 minutes
+
+Once data extraction is complete, you can start the servers from the **Server Control** page.
 
 ---
 

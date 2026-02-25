@@ -85,7 +85,7 @@ function TestDbButton({
 const EMPTY: PanelSettings = {
   AC_PATH: '', AC_BUILD_PATH: '', AC_BINARY_PATH: '',
   AC_CONF_PATH: '', AC_LOG_PATH: '', AC_DATA_PATH: '',
-  AC_WORLDSERVER_CONF: '', AC_AUTHSERVER_CONF: '',
+  AC_WORLDSERVER_CONF: '', AC_AUTHSERVER_CONF: '', AC_CLIENT_PATH: '',
   AC_AUTH_DB_HOST: '', AC_AUTH_DB_PORT: '3306', AC_AUTH_DB_USER: '',
   AC_AUTH_DB_PASSWORD: '', AC_AUTH_DB_NAME: '',
   AC_CHAR_DB_HOST: '', AC_CHAR_DB_PORT: '3306', AC_CHAR_DB_USER: '',
@@ -181,6 +181,7 @@ export default function Settings() {
         <Field label="Config Path (AC_CONF_PATH)"    name="AC_CONF_PATH"         value={form.AC_CONF_PATH}         onChange={set} />
         <Field label="Log Path (AC_LOG_PATH)"        name="AC_LOG_PATH"          value={form.AC_LOG_PATH}          onChange={set} />
         <Field label="Data Path (AC_DATA_PATH)"      name="AC_DATA_PATH"         value={form.AC_DATA_PATH}         onChange={set} />
+        <Field label="Client Path (AC_CLIENT_PATH)"  name="AC_CLIENT_PATH"       value={form.AC_CLIENT_PATH}       onChange={set} />
         <Field label="Worldserver Conf"              name="AC_WORLDSERVER_CONF"  value={form.AC_WORLDSERVER_CONF}  onChange={set} />
         <Field label="Authserver Conf"               name="AC_AUTHSERVER_CONF"   value={form.AC_AUTHSERVER_CONF}   onChange={set} />
       </SectionCard>

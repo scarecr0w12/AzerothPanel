@@ -16,6 +16,7 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
 | **Database Manager** | Browse world/auth/characters databases, execute SQL queries (read-only safety checks), table browser, database backup |
 | **Compiler** | Trigger AzerothCore CMake builds with streaming SSE progress output, view build status |
 | **Installer** | Run the AzerothCore data installation steps with live progress, read/edit `worldserver.conf` and `authserver.conf` in-browser |
+| **Data Extraction** | Download pre-extracted client data from AzerothCore releases, or extract from local WoW 3.3.5a client (DBC, Maps, VMaps, MMaps) |
 | **Settings** | Configure all AzerothCore paths, MySQL credentials, SOAP endpoint, and connection test — entirely UI-driven; no `.env` edits required after initial setup |
 | **Authentication** | JWT bearer tokens, single admin user, configurable session length |
 

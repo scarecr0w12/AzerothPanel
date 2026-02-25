@@ -85,7 +85,9 @@ async def run_build(
         s = await get_settings_dict()
         ac_path = Path(s["AC_PATH"])
         build_path = Path(s["AC_BUILD_PATH"])
-        binary_path = s["AC_BINARY_PATH"]
+        # CMAKE_INSTALL_PREFIX should be the build path, not the bin path
+        # CMake will install binaries to {CMAKE_INSTALL_PREFIX}/bin
+        install_prefix = str(build_path)
 
         _build_state.update(
             running=True, progress=0.0, step="cmake", start_time=time.time(), error=None
@@ -100,7 +102,7 @@ async def run_build(
         extra = cmake_extra.strip()
         cmake_cmd = (
             f"cmake {ac_path} "
-            f"-DCMAKE_INSTALL_PREFIX={binary_path} "
+            f"-DCMAKE_INSTALL_PREFIX={install_prefix} "
             f"-DCMAKE_BUILD_TYPE={build_type} "
             f"-DTOOLS_BUILD=all "
             f"{extra}"

@@ -4,7 +4,12 @@ from pathlib import Path
 from typing import Optional
 
 from app.core.security import get_current_user
-from app.services.logs import log_manager as lm
+from app.services.logs import (
+    list_available_sources,
+    read_tail,
+    search_logs,
+    get_log_file_size,
+)
 
 router = APIRouter(prefix="/logs", tags=["Log Management"])
 
@@ -12,7 +17,7 @@ router = APIRouter(prefix="/logs", tags=["Log Management"])
 @router.get("/sources")
 async def list_sources(_: dict = Depends(get_current_user)):
     """List log sources that currently have accessible log files."""
-    return {"sources": await lm.list_available_sources()}
+    return {"sources": await list_available_sources()}
 
 
 @router.get("/{source}")
@@ -31,16 +36,16 @@ async def get_logs(
     - `search`: full-text search pattern (regex supported)
     """
     if search or level:
-        entries = await lm.search_logs(source, search or "", level=level)
+        entries = await search_logs(source, search or "", level=level)
     else:
-        entries = await lm.read_tail(source, lines=lines)
+        entries = await read_tail(source, lines=lines)
     return {"source": source, "count": len(entries), "entries": entries}
 
 
 @router.get("/{source}/size")
 async def get_log_size(source: str, _: dict = Depends(get_current_user)):
     """Return the size in bytes of a log file."""
-    size = await lm.get_log_file_size(source)
+    size = await get_log_file_size(source)
     return {"source": source, "size_bytes": size}
 
 

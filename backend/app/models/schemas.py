@@ -161,7 +161,8 @@ REPO_PLAYERBOT = "https://github.com/mod-playerbots/azerothcore-wotlk.git"
 class InstallConfig(BaseModel):
     ac_path: str = "/opt/azerothcore"
     db_host: str = "127.0.0.1"
-    db_root_password: str = ""   # MySQL root password — leave empty for passwordless root
+    db_root_password: str = ""   # MySQL root password — leave empty to use UNIX socket auth
+                                  # (Debian/Ubuntu default: root uses auth_socket plugin)
     db_user: str = "acore"
     db_password: str = "acore"
     clone_branch: str = "master"

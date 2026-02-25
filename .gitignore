@@ -54,3 +54,4 @@ secrets/
 *.db
 *.sqlite
 *.sqlite3
+.kilocode/

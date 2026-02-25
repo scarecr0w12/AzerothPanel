@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # --- Panel SQLite DB (panel-specific data: settings, audit logs, …) ---
     PANEL_DB_URL: str = "sqlite+aiosqlite:////data/panel.db"
 
+    # --- Docker-mounted paths (from docker-compose .env) ---
+    # These are read from the environment and used as defaults for panel settings
+    AC_PATH: str = "/opt/azerothcore"
+    CLIENT_PATH: str = "/root/clientdata"
+
     # --- CORS ---
     # CORS_ALLOW_ALL=true (default) reflects any Origin back, which is the right
     # default for a self-hosted private panel.  Set to false and populate

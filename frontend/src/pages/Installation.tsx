@@ -55,7 +55,7 @@ export default function Installation() {
 
   const checkQuery = useQuery<InstallCheck>({
     queryKey: ['install-status'],
-    queryFn: () => installApi.status().then((r) => r.data),
+    queryFn: () => installApi.status().then((r) => r.data.checks),
   })
 
   // ─── Start / cancel installation ──────────────────────────────────────────
@@ -252,7 +252,7 @@ export default function Installation() {
             { key: 'ac_path',          label: 'Install Path',        type: 'text',     placeholder: '/opt/azerothcore' },
             { key: 'clone_branch',     label: 'Git Branch',          type: 'text',     placeholder: 'master' },
             { key: 'db_host',          label: 'MySQL Host',          type: 'text',     placeholder: '127.0.0.1' },
-            { key: 'db_root_password', label: 'MySQL Root Password', type: 'password', placeholder: 'leave empty if root has no password' },
+            { key: 'db_root_password', label: 'MySQL Root Password', type: 'password', placeholder: 'leave empty to use UNIX socket auth (Debian/Ubuntu default)' },
             { key: 'db_user',          label: 'AC MySQL User',       type: 'text',     placeholder: 'acore' },
             { key: 'db_password',      label: 'AC MySQL Password',   type: 'password', placeholder: '••••••••' },
           ].map(({ key, label, type, placeholder }) => (

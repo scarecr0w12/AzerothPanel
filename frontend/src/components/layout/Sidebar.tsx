@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Server, ScrollText, Users, Database,
   Download, Hammer, LogOut, ChevronLeft, ChevronRight, Shield, Settings,
+  HardDrive,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore, useAuthStore } from '@/store'
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
   { to: '/database',    icon: Database,        label: 'Database' },
   { to: '/compilation', icon: Hammer,          label: 'Compilation' },
   { to: '/installation',icon: Download,        label: 'Installation' },
+  { to: '/data-extraction', icon: HardDrive,   label: 'Data Extraction' },
   { to: '/settings',    icon: Settings,        label: 'Settings' },
 ]
 

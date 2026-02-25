@@ -201,6 +201,72 @@ The response is an **SSE stream** of build output lines.
 
 ---
 
+### Data Extraction — `/api/v1/data-extraction`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/status` | Get extraction status and data presence |
+| `POST` | `/download` | Download pre-extracted data from AzerothCore releases (SSE stream) |
+| `POST` | `/extract` | Extract data from local WoW 3.3.5a client (SSE stream) |
+| `POST` | `/cancel` | Cancel any running extraction operation |
+
+#### `GET /api/v1/data-extraction/status`
+
+Returns the current extraction status and which data types are present:
+
+```json
+{
+  "in_progress": false,
+  "current_step": null,
+  "progress_percent": 0,
+  "started_at": null,
+  "error": null,
+  "data_path": "/opt/azerothcore/build/data",
+  "has_dbc": true,
+  "has_maps": true,
+  "has_vmaps": true,
+  "has_mmaps": true,
+  "data_present": true
+}
+```
+
+#### `POST /api/v1/data-extraction/download`
+
+Downloads pre-extracted client data from AzerothCore GitHub releases. This is the recommended method.
+
+Request body (optional):
+
+```json
+{
+  "data_path": "/custom/data/path",  // Optional, uses AC_DATA_PATH from settings
+  "data_url": "https://..."          // Optional, uses default AzerothCore release URL
+}
+```
+
+The response is an **SSE stream** of progress lines.
+
+#### `POST /api/v1/data-extraction/extract`
+
+Extracts client data from a local World of Warcraft 3.3.5a (12340) client.
+
+Request body:
+
+```json
+{
+  "client_path": "/path/to/wow-client",
+  "data_path": "/opt/azerothcore/build/data",  // Optional
+  "binary_path": "/opt/azerothcore/build/bin", // Optional
+  "extract_dbc": true,
+  "extract_maps": true,
+  "extract_vmaps": true,
+  "generate_mmaps": false  // Off by default due to long generation time
+}
+```
+
+The response is an **SSE stream** of extraction progress lines.
+
+---
+
 ### Settings — `/api/v1/settings`
 
 | Method | Path | Description |

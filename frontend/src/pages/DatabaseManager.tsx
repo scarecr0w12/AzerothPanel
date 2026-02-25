@@ -75,6 +75,9 @@ export default function DatabaseManager() {
         {/* Table list */}
         <div className="flex-1 overflow-y-auto p-2">
           {tablesQuery.isLoading && <p className="text-xs text-panel-muted p-2">Loading tables…</p>}
+          {tablesQuery.isError && (
+            <p className="text-xs text-danger p-2">DB connection error — check Settings</p>
+          )}
           {tables.map((t) => (
             <button key={t} onClick={() => handleTableClick(t)}
               className={`w-full text-left px-3 py-1.5 rounded text-xs font-mono transition-colors ${
@@ -130,11 +133,16 @@ export default function DatabaseManager() {
         <Card padding={false} className="flex-1 overflow-hidden flex flex-col">
           <CardHeader
             title={selectedTable && !sql.trim() ? `Browsing: ${selectedTable}` : 'Query Results'}
-            subtitle={displayResult ? `${displayResult.row_count} rows · ${displayResult.execution_time_ms?.toFixed(1) ?? '?'}ms` : undefined}
+            subtitle={displayResult
+              ? `${displayResult.total != null ? displayResult.total + ' total' : displayResult.row_count + ' rows'} · ${displayResult.execution_time_ms?.toFixed(1) ?? '?'}ms`
+              : undefined}
           />
           <div className="flex-1 overflow-auto">
             {(browseQuery.isLoading && selectedTable && !sql.trim()) && (
               <p className="text-center text-panel-muted py-8">Loading…</p>
+            )}
+            {(browseQuery.isError && selectedTable && !sql.trim()) && (
+              <p className="text-center text-danger py-8 text-sm">Failed to load table data — check Settings for DB credentials</p>
             )}
             {displayResult && displayResult.columns.length > 0 && (
               <table className="w-full text-xs">
@@ -178,7 +186,7 @@ export default function DatabaseManager() {
                 <Button variant="ghost" size="sm" disabled={browsePage === 1}
                   icon={<ChevronLeft size={14} />} onClick={() => setBrowsePage((p) => p - 1)} />
                 <Button variant="ghost" size="sm"
-                  disabled={(browseQuery.data?.rows.length ?? 0) < 100}
+                  disabled={!browseQuery.data || (browsePage * (browseQuery.data.page_size ?? 50)) >= (browseQuery.data.total ?? 0)}
                   icon={<ChevronRight size={14} />} onClick={() => setBrowsePage((p) => p + 1)} />
               </div>
             </div>

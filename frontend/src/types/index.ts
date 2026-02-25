@@ -68,6 +68,38 @@ export const CLASS_COLORS: Record<number, string> = {
   9: '#9482C9', 11: '#FF7D0A',
 }
 
+// Zone names (WoW 3.3.5a - Eastern Kingdoms, Kalimdor, Outland, Northrend)
+// This is a partial list of common zones
+export const ZONE_NAMES: Record<number, string> = {
+  // Eastern Kingdoms
+  1: 'Dun Morogh', 3: 'Badlands', 4: 'Blasted Lands', 7: 'Blackrock Mountain',
+  8: 'Swamp of Sorrows', 9: 'Elwynn Forest', 10: 'Eversong Woods', 11: 'Ghostlands',
+  12: 'Ironforge', 14: 'Durotar', 15: 'Dustwallow Marsh', 16: 'Azshara',
+  17: 'The Barrens', 22: 'Wetlands', 23: 'Duskwood', 24: 'Hillsbrad Foothills',
+  25: 'The Hinterlands', 26: 'Feralas', 27: 'Thousand Needles', 28: 'Tanaris',
+  32: 'Searing Gorge', 33: 'Stranglethorn Vale', 36: 'Alterac Mountains',
+  38: 'Loch Modan', 40: 'Westfall', 41: 'Deadwind Pass', 42: 'Darkshore',
+  43: 'Ashenvale', 44: 'Thousand Needles', 45: 'Arathi Highlands', 46: 'Burning Steppes',
+  47: 'The Hinterlands', 48: 'Redridge Mountains', 51: 'Searing Gorge',
+  65: 'Dragonblight', 66: 'Zul\'Drak', 67: 'The Storm Peaks', 68: 'Icecrown',
+  69: 'Howling Fjord', 70: 'Grizzly Hills', 71: 'Sholazar Basin', 72: 'Borean Tundra',
+  85: 'Tirisfal Glades', 86: 'Silverpine Forest', 87: 'Western Plaguelands',
+  88: 'Eastern Plaguelands', 89: 'Scarlet Monastery', 90: 'Teldrassil',
+  92: 'Molten Core', 93: 'Zul\'Gurub', 94: 'Stratholme', 95: 'Scholomance',
+  101: 'Darnassus', 102: 'Ironforge', 103: 'Orgrimmar', 104: 'Thunder Bluff',
+  105: 'Undercity', 106: 'Silvermoon City', 107: 'Exodar', 108: 'Shattrath City',
+  109: 'Dalaran',
+  // Outland
+  194: 'Shadowmoon Valley', 195: 'Nagrand', 196: 'Terokkar Forest',
+  197: 'Zangarmarsh', 198: 'Blade\'s Edge Mountains', 199: 'Netherstorm',
+  200: 'Hellfire Peninsula', 201: 'Shattrath City',
+  // Northrend
+  341: 'Wintergrasp', 394: 'Grizzly Hills', 395: 'Howling Fjord',
+  396: 'Icecrown', 397: 'Sholazar Basin', 398: 'Zul\'Drak',
+  399: 'The Storm Peaks', 400: 'Dragonblight', 401: 'Borean Tundra',
+  402: 'Crystalsong Forest', 419: 'Dalaran',
+}
+
 // ─── Logs ────────────────────────────────────────────────────────────────────
 export interface LogEntry {
   timestamp: string
@@ -87,6 +119,10 @@ export interface QueryResult {
   row_count: number
   execution_time_ms: number
   is_select: boolean
+  // present on browse (table scan) responses
+  total?: number
+  page?: number
+  page_size?: number
 }
 
 // ─── Build ───────────────────────────────────────────────────────────────────
@@ -120,6 +156,7 @@ export interface PanelSettings {
   AC_DATA_PATH: string
   AC_WORLDSERVER_CONF: string
   AC_AUTHSERVER_CONF: string
+  AC_CLIENT_PATH: string
   // Auth DB
   AC_AUTH_DB_HOST: string
   AC_AUTH_DB_PORT: string

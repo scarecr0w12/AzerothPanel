@@ -8,6 +8,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # Use BuildKit for better caching (run: DOCKER_BUILDKIT=1 docker-compose build)
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: azerothpanel-backend
     restart: unless-stopped
     env_file: ./backend/.env
@@ -15,8 +18,17 @@ services:
     volumes:
       # AC_PATH is read from .env (root). Falls back to /opt/azerothcore.
       - ${AC_PATH:-/opt/azerothcore}:${AC_PATH:-/opt/azerothcore}:rw
+      # CLIENT_PATH is read from .env (root). Used for WoW client data extraction.
+      # Set this to the path of your WoW 3.3.5a client on the host machine.
+      # Mounted as rw so extraction tools can write output files.
+      - ${CLIENT_PATH:-/root/clientdata}:${CLIENT_PATH:-/root/clientdata}:rw
       # Persist the panel SQLite database across restarts
       - panel_data:/data
+      # MySQL UNIX socket — required so the installer can reach MySQL as root
+      # via auth_socket (TCP connections are rejected by auth_socket on Debian/Ubuntu).
+      - /var/run/mysqld:/var/run/mysqld:ro
+      # Persist pip cache to speed up rebuilds
+      - pip_cache:/root/.cache/pip
 
   # ─── Frontend (nginx) ────────────────────────────────────────────────────────
   # Multi-stage Dockerfile: builds the React app, then serves it with nginx.
@@ -25,6 +37,10 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      # Use BuildKit for better caching (run: DOCKER_BUILDKIT=1 docker-compose build)
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+      # Persist npm cache across builds
     container_name: azerothpanel-frontend
     restart: unless-stopped
     ports:
@@ -38,4 +54,5 @@ services:
 
 volumes:
   panel_data:
+  pip_cache:
 
