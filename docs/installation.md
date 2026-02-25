@@ -111,15 +111,27 @@ The panel is available at `http://<your-host>:80` (or `PANEL_PORT`).
 
 1. Open the panel URL in your browser.
 2. Log in with the credentials from `PANEL_ADMIN_USER` / `PANEL_ADMIN_PASSWORD`.
-3. Go to **Settings** and fill in:
+
+   ![AzerothPanel login screen](screenshots/login.png)
+
+3. After a successful login you will land on the **Dashboard**, which shows real-time worldserver / authserver status.
+
+   ![Dashboard overview](screenshots/dashboard.png)
+
+4. Go to **Settings** and fill in:
     - AzerothCore installation path (pre-filled with `AC_PATH` value)
     - MySQL connection details for auth, world, and characters databases
     - SOAP connection details
-4. Click **Test Connection** to verify, then **Save**.
+
+   ![Settings page](screenshots/settings.png)
+
+5. Click **Save Settings** to apply. Changes take effect immediately — no restart required.
 
 ### 5. Client Data Extraction
 
 Before starting the servers, you need client data files (DBC, Maps, VMaps, MMaps). Go to **Data Extraction** in the sidebar:
+
+![Data Extraction page](screenshots/data_extraction.png)
 
 **Option A: Download Pre-Extracted Data (Recommended)**
 - Click "Download Data" to fetch pre-extracted data from AzerothCore releases (~1.5GB)
@@ -134,6 +146,8 @@ Before starting the servers, you need client data files (DBC, Maps, VMaps, MMaps
 - Note: MMaps generation takes 30-60 minutes
 
 Once data extraction is complete, you can start the servers from the **Server Control** page.
+
+![Server Control page](screenshots/server_control.png)
 
 ---
 

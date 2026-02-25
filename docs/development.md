@@ -13,7 +13,8 @@ This document covers setting up a local development environment, the project con
 5. [Adding a new API endpoint](#adding-a-new-api-endpoint)
 6. [Adding a new frontend page](#adding-a-new-frontend-page)
 7. [Environment variables in development](#environment-variables-in-development)
-8. [Troubleshooting](#troubleshooting)
+8. [UI Reference](#ui-reference)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -231,9 +232,61 @@ The frontend does not use `.env` files at runtime — Vite `import.meta.env` var
 
 ---
 
-## Troubleshooting
+## UI Reference
 
-### `uvicorn` fails to start — `Address already in use`
+The following screenshots show the current state of each panel page. Useful as reference when developing new features or debugging layout regressions.
+
+### Login
+
+![Login](screenshots/login.png)
+
+### Dashboard
+
+![Dashboard](screenshots/dashboard.png)
+
+### Server Control
+
+![Server Control](screenshots/server_control.png)
+
+### Log Viewer
+
+![Log Viewer](screenshots/log_viewer.png)
+
+### Player Management
+
+![Players](screenshots/players.png)
+
+### Database Manager
+
+![Database](screenshots/database.png)
+
+### Compilation
+
+![Compilation](screenshots/compilation.png)
+
+### Installation & Setup
+
+![Installation](screenshots/installation.png)
+
+### Data Extraction
+
+![Data Extraction](screenshots/data_extraction.png)
+
+### Module Manager
+
+![Modules](screenshots/modules.png)
+
+### Config Editor
+
+![Config Editor](screenshots/config_editor.png)
+
+### Settings
+
+![Settings](screenshots/settings.png)
+
+---
+
+## Troubleshooting
 
 Check what is using port 8000:
 

@@ -34,6 +34,8 @@ AzerothPanel has two configuration layers:
 
 These values are stored in the panel's SQLite database and applied at runtime. No restart is needed after saving.
 
+![Settings page](screenshots/settings.png)
+
 ### AzerothCore
 
 | Field | Description |

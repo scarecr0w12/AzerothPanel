@@ -7,6 +7,8 @@ The AzerothPanel backend exposes a versioned REST API and a WebSocket endpoint.
 - **Interactive docs (Swagger UI)**: `http://<host>:8000/docs`
 - **Alternative docs (ReDoc)**: `http://<host>:8000/redoc`
 
+The sections below describe each endpoint group alongside the corresponding panel UI.
+
 ---
 
 ## Authentication
@@ -62,6 +64,8 @@ Authorization: Bearer eyJ...
 
 ### Server Control — `/api/v1/server`
 
+![Server Control page](screenshots/server_control.png)
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/status` | Worldserver & authserver running status, online player count |
@@ -90,6 +94,8 @@ Response:
 ---
 
 ### Player Management — `/api/v1/players`
+
+![Player Management page](screenshots/players.png)
 
 | Method | Path | Description |
 |---|---|---|
@@ -127,6 +133,8 @@ Query parameters:
 
 ### Logs — `/api/v1/logs`
 
+![Log Viewer page](screenshots/log_viewer.png)
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/sources` | List available log sources (worldserver, authserver, etc.) |
@@ -145,6 +153,8 @@ Query parameters:
 ---
 
 ### Database Manager — `/api/v1/database`
+
+![Database Manager page](screenshots/database.png)
 
 | Method | Path | Description |
 |---|---|---|
@@ -168,6 +178,8 @@ Query parameters:
 
 ### Installation — `/api/v1/installation`
 
+![Installation & Setup page](screenshots/installation.png)
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/status` | Latest installation step status |
@@ -182,6 +194,8 @@ The `/run` endpoint uses **Server-Sent Events (SSE)**. The client receives a str
 ---
 
 ### Compilation — `/api/v1/compilation`
+
+![Compilation page](screenshots/compilation.png)
 
 | Method | Path | Description |
 |---|---|---|
@@ -202,6 +216,8 @@ The response is an **SSE stream** of build output lines.
 ---
 
 ### Data Extraction — `/api/v1/data-extraction`
+
+![Data Extraction page](screenshots/data_extraction.png)
 
 | Method | Path | Description |
 |---|---|---|
@@ -269,6 +285,8 @@ The response is an **SSE stream** of extraction progress lines.
 
 ### Settings — `/api/v1/settings`
 
+![Settings page](screenshots/settings.png)
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `` | Get all current panel settings |
@@ -291,6 +309,31 @@ Response:
   ...
 }
 ```
+
+---
+
+### Module Manager — `/api/v1/modules`
+
+![Module Manager page](screenshots/modules.png)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/catalogue` | List available modules from the AzerothCore GitHub catalogue |
+| `GET` | `/installed` | List locally installed modules |
+| `POST` | `/install` | Clone and install a module by repository slug |
+| `DELETE` | `/{module_name}` | Remove an installed module |
+
+---
+
+### Config Editor — `/api/v1/configs`
+
+![Config Editor page](screenshots/config_editor.png)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/files` | List all editable `.conf` files |
+| `GET` | `/files/{filename}` | Get the raw text content of a config file |
+| `PUT` | `/files/{filename}` | Save updated content to a config file |
 
 ---
 

@@ -17,8 +17,41 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
 | **Compiler** | Trigger AzerothCore CMake builds with streaming SSE progress output, view build status |
 | **Installer** | Run the AzerothCore data installation steps with live progress, read/edit `worldserver.conf` and `authserver.conf` in-browser |
 | **Data Extraction** | Download pre-extracted client data from AzerothCore releases, or extract from local WoW 3.3.5a client (DBC, Maps, VMaps, MMaps) |
+| **Module Manager** | Browse, install, and remove AzerothCore modules from the community catalogue |
+| **Config Editor** | In-browser syntax-highlighted editor for `worldserver.conf`, `authserver.conf`, and installed module configs |
 | **Settings** | Configure all AzerothCore paths, MySQL credentials, SOAP endpoint, and connection test — entirely UI-driven; no `.env` edits required after initial setup |
 | **Authentication** | JWT bearer tokens, single admin user, configurable session length |
+
+---
+
+## Screenshots
+
+<table>
+<tr>
+  <td align="center"><strong>Login</strong><br><img src="docs/screenshots/login.png" width="420"></td>
+  <td align="center"><strong>Dashboard</strong><br><img src="docs/screenshots/dashboard.png" width="420"></td>
+</tr>
+<tr>
+  <td align="center"><strong>Server Control</strong><br><img src="docs/screenshots/server_control.png" width="420"></td>
+  <td align="center"><strong>Player Management</strong><br><img src="docs/screenshots/players.png" width="420"></td>
+</tr>
+<tr>
+  <td align="center"><strong>Log Viewer</strong><br><img src="docs/screenshots/log_viewer.png" width="420"></td>
+  <td align="center"><strong>Database Manager</strong><br><img src="docs/screenshots/database.png" width="420"></td>
+</tr>
+<tr>
+  <td align="center"><strong>Module Manager</strong><br><img src="docs/screenshots/modules.png" width="420"></td>
+  <td align="center"><strong>Config Editor</strong><br><img src="docs/screenshots/config_editor.png" width="420"></td>
+</tr>
+<tr>
+  <td align="center"><strong>Compilation</strong><br><img src="docs/screenshots/compilation.png" width="420"></td>
+  <td align="center"><strong>Installation & Setup</strong><br><img src="docs/screenshots/installation.png" width="420"></td>
+</tr>
+<tr>
+  <td align="center"><strong>Data Extraction</strong><br><img src="docs/screenshots/data_extraction.png" width="420"></td>
+  <td align="center"><strong>Settings</strong><br><img src="docs/screenshots/settings.png" width="420"></td>
+</tr>
+</table>
 
 ---
 
@@ -106,9 +139,13 @@ Open [http://localhost](http://localhost) (or the port you set in `PANEL_PORT`).
 
 Log in with the admin credentials from `backend/.env`, then navigate to **Settings** to configure:
 
+![Login screen](docs/screenshots/login.png)
+
 - AzerothCore installation path
 - MySQL host/port/user/password for each database (world, auth, characters)
 - SOAP host/port/user/password for in-game command execution
+
+![Settings page](docs/screenshots/settings.png)
 
 Use **Test Connection** to verify each database before saving.
 
