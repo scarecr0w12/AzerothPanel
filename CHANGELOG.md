@@ -7,6 +7,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] – 2026-03-01
 
+### Changed – AzerothCore Source Update Relocated to Compilation Page
+
+The "Pull Latest Source" action is now surfaced on the **Compilation** page
+as a prominent card above the build configuration, replacing its previous
+location buried in Module Manager → Installed tab.  The natural workflow
+is *pull source → compile*, and placing both on the same page makes that
+obvious.
+
+#### `frontend/src/pages/Compilation.tsx`
+- Added **Pull Latest Source** card at the top of the page.
+- Streams `POST /modules/update-azerothcore` output inline (expandable log
+  area), identical UX pattern to the existing build-output section.
+- Imports: `GitPullRequest`, `ArrowUpCircle`, `ChevronDown`, `ChevronUp`
+  from lucide-react; `modulesApi` from `@/services/api`.
+
+#### `frontend/src/pages/ModuleManager.tsx`
+- Removed the AzerothCore source update card from the Installed tab to
+  eliminate duplication (feature now lives on the Compilation page).
+- Removed now-unused `GitPullRequest` import.
+
+---
+
 ### Added – AzerothCore Source & Module Updates
 
 The Module Manager can now pull the latest code for the AzerothCore source

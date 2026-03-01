@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Hammer, StopCircle, RotateCcw } from 'lucide-react'
-import { compileApi } from '@/services/api'
+import { Hammer, StopCircle, RotateCcw, GitPullRequest, ArrowUpCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { compileApi, modulesApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import type { BuildStatus } from '@/types'
@@ -26,6 +26,14 @@ export default function Compilation() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // ── Source update state
+  const [updateLogs, setUpdateLogs] = useState<string[]>([])
+  const [updating, setUpdating] = useState(false)
+  const [updateDone, setUpdateDone] = useState(false)
+  const [updateExpanded, setUpdateExpanded] = useState(false)
+  const updateBottomRef = useRef<HTMLDivElement>(null)
+  const updateAbortRef = useRef<AbortController | null>(null)
+
   const statusQuery = useQuery<BuildStatus>({
     queryKey: ['build-status'],
     queryFn: () => compileApi.status().then((r) => r.data),
@@ -35,6 +43,56 @@ export default function Compilation() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
+
+  useEffect(() => {
+    updateBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [updateLogs])
+
+  async function pullSource() {
+    setUpdateLogs([])
+    setUpdateDone(false)
+    setUpdating(true)
+    setUpdateExpanded(true)
+
+    const ctrl = new AbortController()
+    updateAbortRef.current = ctrl
+
+    try {
+      const resp = await modulesApi.updateAzerothCore(ctrl.signal)
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => `HTTP ${resp.status}`)
+        setUpdateLogs([`[error] ${txt}`])
+        setUpdateDone(true)
+        return
+      }
+
+      const reader = resp.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const parts = buf.split('\n')
+        buf = parts.pop() ?? ''
+        for (const raw of parts) {
+          if (!raw.startsWith('data: ')) continue
+          try {
+            const payload = JSON.parse(raw.slice(6))
+            if (payload.done) { setUpdateDone(true); break }
+            if (payload.line) setUpdateLogs((prev) => [...prev, payload.line as string])
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (e: unknown) {
+      if ((e as { name?: string })?.name !== 'AbortError') {
+        setUpdateLogs((prev) => [...prev, `[error] ${String(e)}`])
+      }
+    } finally {
+      setUpdating(false)
+      setUpdateDone(true)
+    }
+  }
 
   async function startBuild() {
     setLogs([])
@@ -107,6 +165,70 @@ export default function Compilation() {
 
   return (
     <div className="space-y-4">
+
+      {/* ── Source update card */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GitPullRequest size={16} className="text-brand" />
+            <div>
+              <h3 className="text-sm font-semibold text-white">Update AzerothCore Source</h3>
+              <p className="text-xs text-panel-muted mt-0.5">
+                Pull the latest commits from the AzerothCore git repository before building.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={updating || building}
+              onClick={pullSource}
+            >
+              {updating
+                ? <><RotateCcw size={13} className="animate-spin" /> Pulling…</>
+                : <><ArrowUpCircle size={13} /> Pull Latest Source</>}
+            </Button>
+            {updateLogs.length > 0 && (
+              <button
+                onClick={() => setUpdateExpanded((v) => !v)}
+                className="p-1.5 text-gray-400 hover:text-white transition-colors"
+              >
+                {updateExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Inline log output */}
+        {updateExpanded && updateLogs.length > 0 && (
+          <div className="mt-4 rounded-lg bg-panel-bg border border-panel-border max-h-64 overflow-y-auto px-4 py-3">
+            {updateLogs.map((line, i) => {
+              const isOk  = line.startsWith('[ok]')
+              const isErr = line.startsWith('[error]') || line.includes('[exit ')
+              const isInf = line.startsWith('[info]') || line.startsWith('[cmd]')
+              return (
+                <div key={i} className={`font-mono text-xs leading-5 ${
+                  isOk  ? 'text-green-400' :
+                  isErr ? 'text-red-400' :
+                  isInf ? 'text-blue-300' :
+                  'text-gray-300'
+                }`}>{line}</div>
+              )
+            })}
+            {updating && <div className="text-yellow-400 text-xs animate-pulse mt-1">Running…</div>}
+            {updateDone && (
+              <div className={`text-xs mt-1 font-medium ${
+                updateLogs.some(l => l.startsWith('[ok]')) ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {updateLogs.some(l => l.startsWith('[ok]')) ? '✔ Complete' : '✘ Finished with errors'}
+              </div>
+            )}
+            <div ref={updateBottomRef} />
+          </div>
+        )}
+      </Card>
+
       {/* Config card */}
       <Card>
         <CardHeader title="Build Configuration" subtitle="Configure and start a new compilation" />

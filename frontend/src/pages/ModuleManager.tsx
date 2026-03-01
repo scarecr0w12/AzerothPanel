@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Package, Download, Trash2, Star, GitFork, Search, RefreshCw,
   CheckCircle2, XCircle, ExternalLink, ChevronLeft, ChevronRight,
-  AlertTriangle, Terminal, X, Layers, Gauge, ArrowUpCircle, GitPullRequest,
+  AlertTriangle, Terminal, X, Layers, Gauge, ArrowUpCircle,
 } from 'lucide-react'
 import { modulesApi } from '@/services/api'
 import { Card } from '@/components/ui/Card'
@@ -610,33 +610,7 @@ export default function ModuleManager() {
       {/* ══ INSTALLED TAB ══════════════════════════════════════════════════ */}
       {tab === 'installed' && (
         <div className="space-y-4">
-          {/* ── AzerothCore source update card */}
-          <div className="bg-panel-surface border border-panel-border rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-2">
-              <GitPullRequest size={15} className="text-brand" />
-              <h3 className="text-sm font-semibold text-white">AzerothCore Source</h3>
-            </div>
-            <p className="text-xs text-panel-muted mb-4">
-              Pull the latest changes from the AzerothCore git repository.
-              After updating you will need to <Link to="/compilation" className="text-brand-light hover:underline">recompile</Link> for changes to take effect.
-            </p>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={updatingName !== null}
-              onClick={() =>
-                handleUpdate(
-                  'azerothcore',
-                  'Update AzerothCore Source',
-                  (signal) => modulesApi.updateAzerothCore(signal),
-                )
-              }
-            >
-              {updatingName === 'azerothcore'
-                ? <><RefreshCw size={13} className="animate-spin" /> Updating…</>
-                : <><ArrowUpCircle size={13} /> Update AzerothCore Source</>}
-            </Button>
-          </div>          {/* Path */}
+          {/* Path */}
           {installedQuery.data && (
             <p className="text-xs text-panel-muted font-mono bg-panel-surface border border-panel-border rounded-lg px-3 py-2 inline-block">
               Modules directory: {installedQuery.data.modules_path}
