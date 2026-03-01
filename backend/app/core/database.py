@@ -21,6 +21,8 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 
+from sqlalchemy import text
+
 class Base(DeclarativeBase):
     pass
 
@@ -40,6 +42,21 @@ async def init_panel_db() -> None:
     """Create all tables registered with Base.metadata (idempotent)."""
     async with _panel_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def run_panel_db_migrations() -> None:
+    """
+    Apply incremental schema changes that create_all cannot handle
+    (adding columns to existing tables).  Safe to call on every startup.
+    """
+    async with _panel_engine.begin() as conn:
+        # worldserver_instances.conf_path  (added in v1.1)
+        result = await conn.execute(text("PRAGMA table_info(worldserver_instances)"))
+        cols = {row[1] for row in result.fetchall()}
+        if "conf_path" not in cols:
+            await conn.execute(
+                text("ALTER TABLE worldserver_instances ADD COLUMN conf_path TEXT NOT NULL DEFAULT ''")
+            )
 
 
 async def get_panel_db() -> AsyncIterator[AsyncSession]:

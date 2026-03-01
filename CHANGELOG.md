@@ -11,12 +11,108 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 | Area | Change |
 |---|---|
+| **Multi-worldserver instances** | Run any number of independent worldserver processes from a single panel — full CRUD, per-instance start/stop/restart/console, and live status polling |
+| **In-panel worldserver provisioning** | Create a second (or third) worldserver entirely from the UI: 2-step wizard generates a patched `worldserver.conf` with custom ports, realm name and realm ID |
+| **Per-instance config editor** | Each instance card now has a **Config** tab — load, edit and save that instance's `worldserver.conf` without leaving the panel |
 | **Panel self-update** | New Settings UI + `make version` / `make update` + host-daemon commands to pull from GitHub and rebuild containers without shell access |
 | **AzerothCore source updates** | `POST /modules/update-azerothcore` streams `git pull` output; surfaced as a **Pull Latest Source** card on the Compilation page |
 | **Module git updates** | Per-module and bulk `git pull` from Module Manager → Installed tab |
 | **UX** | Moved AC source update from Module Manager to the Compilation page (natural pull → compile workflow) |
 | **Playerbots DB** | Auto-detected `acore_playerbots` tab in Database Manager when `mod-playerbots` is installed |
 | **Host daemon** | TCP daemon (`127.0.0.1:7879`) manages game-server processes outside Docker so they survive container restarts |
+
+---
+
+### Added – Multi-Worldserver Instances & In-Panel Configuration Provisioning
+
+The panel can now manage an unlimited number of worldserver processes and
+provision each one's configuration file directly from the UI.
+
+#### Backend — data model & migrations
+
+##### `backend/app/models/panel_models.py`
+- New `WorldServerInstance` SQLAlchemy model: `id`, `display_name`,
+  `process_name` (unique daemon key), `binary_path`, `working_dir`,
+  `conf_path` (path to this instance's `worldserver.conf`), `notes`,
+  `sort_order`.
+
+##### `backend/app/models/schemas.py`
+- `WorldServerInstanceSchema`, `WorldServerInstanceCreate`,
+  `WorldServerInstanceUpdate`, `WorldServerInstanceListResponse` — full
+  Pydantic schema set for instance CRUD.
+- New `WorldServerProvisionRequest` schema: `conf_output_path`, `realm_name`,
+  `worldserver_port`, `instance_port`, `ra_port`, `realm_id`,
+  `extra_overrides`.
+
+##### `backend/app/core/database.py`
+- `run_panel_db_migrations()` — `PRAGMA table_info`-based runtime migration
+  that adds `conf_path` to existing `worldserver_instances` tables so
+  upgrades are non-destructive.
+
+##### `backend/app/main.py`
+- Lifespan now calls `run_panel_db_migrations()` before seeding defaults so
+  the column is available on first boot after upgrade.
+
+#### Backend — API endpoints
+
+##### `backend/app/api/v1/endpoints/instances.py` *(new file)*
+- `GET    /server/instances` — list all instances with live process status.
+- `POST   /server/instances` — create a new instance.
+- `GET    /server/instances/{id}` — fetch one instance.
+- `PUT    /server/instances/{id}` — update metadata.
+- `DELETE /server/instances/{id}` — stop process (if running) then delete.
+- `POST   /server/instances/{id}/start|stop|restart` — process control.
+- `POST   /server/instances/{id}/command` — send a GM console command via
+  the host daemon's `console` channel.
+- `GET    /server/instances/{id}/config` — read the instance's
+  `worldserver.conf`; falls back to the global `AC_WORLDSERVER_CONF`.
+- `PUT    /server/instances/{id}/config` — write updated conf content.
+- `POST   /server/instances/{id}/generate-config` — copy the global
+  `worldserver.conf` as a template, apply regex-based key=value patches
+  (ports, realm name, realm ID), write to `conf_output_path`, and update
+  the instance's `conf_path` in the DB.
+
+##### `backend/app/services/azerothcore/instance_seeder.py` *(new file)*
+- Seeds a default `"worldserver"` instance on first startup so the main
+  server appears without manual configuration.
+
+##### `backend/app/services/azerothcore/server_manager.py`
+- `start_instance` and `restart_instance` now accept `conf_path` and pass
+  `-c <conf_path>` to the daemon when set.
+
+##### `backend/ac_host_daemon.py`
+- `_do_start` / `_handle_client` extended to accept an `args` list and
+  spread it into the subprocess call, enabling per-instance `--config`
+  flag support.
+
+#### Frontend
+
+##### `frontend/src/types/index.ts`
+- `WorldServerInstance` extended with `conf_path`.
+- New `WorldServerProvisionRequest` interface.
+
+##### `frontend/src/services/api.ts`
+- `instancesApi` extended with `getConfig(id)`, `saveConfig(id, content)`,
+  `generateConfig(id, data)`.
+
+##### `frontend/src/hooks/useServerStatus.ts`
+- Full hook set: `useInstances`, `useStartInstance`, `useStopInstance`,
+  `useRestartInstance`, `useCreateInstance`, `useUpdateInstance`,
+  `useDeleteInstance`.
+
+##### `frontend/src/pages/ServerControl.tsx`
+- **Authserver** card unchanged.
+- **Worldserver Instances** grid: each `InstanceCard` now has a two-tab
+  layout — **Status** (live stats + start/stop/restart + GM console) and
+  **Config** (lazy-loaded conf editor with Save/Discard).
+- **Add Instance** modal is now a 2-step wizard:
+  - *Step 1* — display name, process name, binary path, working dir, notes.
+    Process name auto-fills the suggested conf output path.
+  - *Step 2* — optional "Generate a `worldserver.conf`" toggle; when
+    enabled exposes `conf_output_path`, `realm_name`, `realm_id`,
+    `worldserver_port`, `instance_port`, `ra_port` fields.  On submit the
+    instance is created and the config is generated in one flow.
+- Provision errors surfaced inline above the instances grid.
 
 ---
 

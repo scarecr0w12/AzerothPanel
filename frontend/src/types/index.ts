@@ -24,6 +24,48 @@ export interface ServerActionResponse {
   message: string
 }
 
+// ─── Worldserver Instances ───────────────────────────────────────────────────
+export interface WorldServerInstance {
+  id: number
+  display_name: string
+  process_name: string
+  binary_path: string
+  working_dir: string
+  conf_path: string
+  notes: string
+  sort_order: number
+  status?: ProcessStatus
+}
+
+export interface WorldServerInstanceCreate {
+  display_name: string
+  process_name: string
+  binary_path?: string
+  working_dir?: string
+  conf_path?: string
+  notes?: string
+  sort_order?: number
+}
+
+export interface WorldServerInstanceUpdate {
+  display_name?: string
+  binary_path?: string
+  working_dir?: string
+  conf_path?: string
+  notes?: string
+  sort_order?: number
+}
+
+export interface WorldServerProvisionRequest {
+  conf_output_path: string
+  realm_name?: string
+  worldserver_port?: number
+  instance_port?: number
+  ra_port?: number
+  realm_id?: number
+  extra_overrides?: Record<string, string>
+}
+
 // ─── Players ─────────────────────────────────────────────────────────────────
 export interface Account {
   id: number

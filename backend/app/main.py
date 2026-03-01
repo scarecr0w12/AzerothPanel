@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.api.websockets.logs import router as ws_logs_router
 from app.core.config import settings
-from app.core.database import init_panel_db
+from app.core.database import init_panel_db, run_panel_db_migrations
 
 # Import ORM models so their metadata is registered with Base before init_panel_db()
 import app.models.panel_models  # noqa: F401
@@ -19,9 +19,14 @@ import app.models.panel_models  # noqa: F401
 async def lifespan(app: FastAPI):
     # 1. Create / migrate panel SQLite tables
     await init_panel_db()
-    # 2. Seed any missing runtime settings with defaults
+    # 2. Apply incremental column migrations (safe to run on every startup)
+    await run_panel_db_migrations()
+    # 3. Seed any missing runtime settings with defaults
     from app.services.panel_settings import seed_defaults
     await seed_defaults()
+    # 4. Ensure at least one worldserver instance (the default) exists
+    from app.services.azerothcore.instance_seeder import seed_default_instance
+    await seed_default_instance()
     yield
     # Shutdown: nothing to clean up currently
 

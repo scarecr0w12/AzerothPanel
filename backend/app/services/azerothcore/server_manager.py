@@ -439,3 +439,143 @@ async def restart_authserver() -> tuple[bool, str]:
         return False, msg
     await asyncio.sleep(1)
     return await _launch("authserver")
+
+
+# ---------------------------------------------------------------------------
+# Multi-instance worldserver API
+# ---------------------------------------------------------------------------
+
+async def _resolve_binary_and_cwd(
+    binary_path: str, working_dir: str
+) -> tuple[str, str]:
+    """
+    Resolve the binary path and CWD for an instance.
+
+    If either is empty the global AC_BINARY_PATH setting is used as the base:
+      - binary  → <AC_BINARY_PATH>/worldserver
+      - cwd     → <AC_BINARY_PATH>
+    """
+    from app.services.panel_settings import get_settings_dict
+    s = await get_settings_dict()
+    base = s.get("AC_BINARY_PATH", "/opt/azerothcore/bin")
+
+    resolved_binary = binary_path.strip() or str(Path(base) / "worldserver")
+    resolved_cwd = working_dir.strip() or base
+    return resolved_binary, resolved_cwd
+
+
+async def start_instance(
+    process_name: str,
+    binary_path: str = "",
+    working_dir: str = "",
+    conf_path: str = "",
+) -> tuple[bool, str]:
+    """Start an arbitrary worldserver instance identified by *process_name*."""
+    binary, cwd = await _resolve_binary_and_cwd(binary_path, working_dir)
+    # Pass -c <conf> when a custom conf file is specified
+    extra_args = ["-c", conf_path.strip()] if conf_path.strip() else []
+    if await _daemon_available():
+        logger.info(f"[daemon] Starting instance '{process_name}'  binary={binary!r}  args={extra_args!r}")
+        resp = await _daemon_send(
+            {
+                "cmd": "start",
+                "name": process_name,
+                "binary": binary,
+                "cwd": cwd,
+                "args": extra_args,
+            },
+            timeout=15.0,
+        )
+        if resp is None:
+            return False, "Host daemon is not reachable"
+        if resp.get("success"):
+            return True, resp.get("message", f"{process_name} started")
+        return False, resp.get("message", f"Daemon could not start {process_name}")
+
+    # Fallback: direct subprocess (same as _launch_direct but with custom binary/cwd/args)
+    logger.warning(
+        f"[direct] Host daemon not available – starting '{process_name}' directly."
+    )
+    binary_obj = Path(binary)
+    if not binary_obj.exists():
+        return False, f"Binary not found: {binary}"
+    if not os.access(binary, os.X_OK):
+        return False, f"Binary not executable: {binary}"
+
+    pid = _find_pid(process_name)
+    if pid:
+        return False, f"{process_name} is already running (PID {pid})"
+
+    stderr_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".stderr", delete=False)
+    stderr_path = stderr_file.name
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            binary,
+            *extra_args,
+            cwd=cwd,
+            env=os.environ.copy(),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+        _processes[process_name] = proc
+        _stdin_writers[process_name] = proc.stdin
+        _start_times[process_name] = time.time()
+        stderr_file.close()
+        await asyncio.sleep(3.0)
+        if _find_pid(process_name):
+            try:
+                os.unlink(stderr_path)
+            except Exception:
+                pass
+            return True, f"{process_name} started (PID {proc.pid})"
+        error_msg = f"{process_name} failed to start"
+        try:
+            with open(stderr_path) as fh:
+                content = fh.read().strip()
+                if content:
+                    error_msg = f"{process_name} failed: " + "\n".join(content.split("\n")[-10:])
+        except Exception:
+            pass
+        finally:
+            try:
+                os.unlink(stderr_path)
+            except Exception:
+                pass
+        return False, error_msg
+    except Exception as exc:
+        try:
+            os.unlink(stderr_path)
+        except Exception:
+            pass
+        return False, f"Failed to start {process_name}: {exc}"
+
+
+async def stop_instance(process_name: str) -> tuple[bool, str]:
+    """Stop an arbitrary worldserver instance identified by *process_name*."""
+    return await _stop(process_name)
+
+
+async def restart_instance(
+    process_name: str,
+    binary_path: str = "",
+    working_dir: str = "",
+    conf_path: str = "",
+) -> tuple[bool, str]:
+    """Restart an arbitrary worldserver instance."""
+    ok, msg = await _stop(process_name)
+    if not ok and "not running" not in msg:
+        return False, msg
+    await asyncio.sleep(1)
+    return await start_instance(process_name, binary_path, working_dir, conf_path)
+
+
+async def get_instance_status(process_name: str) -> "ProcessStatus":
+    """Get status for an arbitrary worldserver instance."""
+    return await get_process_status_async(process_name)
+
+
+async def send_instance_command(process_name: str, command: str) -> tuple[bool, str]:
+    """Send a console command to an arbitrary worldserver instance."""
+    return await send_console_command(process_name, command)

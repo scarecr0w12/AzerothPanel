@@ -47,6 +47,27 @@ export const serverApi = {
   announce: (message: string) => api.post('/server/announce', { command: message }),
 }
 
+// ─── Worldserver Instances ────────────────────────────────────────────────────
+export const instancesApi = {
+  list: () => api.get('/server/instances'),
+  get: (id: number) => api.get(`/server/instances/${id}`),
+  create: (data: import('@/types').WorldServerInstanceCreate) =>
+    api.post('/server/instances', data),
+  update: (id: number, data: import('@/types').WorldServerInstanceUpdate) =>
+    api.put(`/server/instances/${id}`, data),
+  delete: (id: number) => api.delete(`/server/instances/${id}`),
+  start: (id: number) => api.post(`/server/instances/${id}/start`),
+  stop: (id: number) => api.post(`/server/instances/${id}/stop`),
+  restart: (id: number) => api.post(`/server/instances/${id}/restart`),
+  command: (id: number, command: string) =>
+    api.post(`/server/instances/${id}/command`, { command }),
+  getConfig: (id: number) => api.get(`/server/instances/${id}/config`),
+  saveConfig: (id: number, content: string) =>
+    api.put(`/server/instances/${id}/config`, { content }),
+  generateConfig: (id: number, data: import('@/types').WorldServerProvisionRequest) =>
+    api.post(`/server/instances/${id}/generate-config`, data),
+}
+
 // ─── Logs ────────────────────────────────────────────────────────────────────
 export const logsApi = {
   sources: () => api.get('/logs/sources'),

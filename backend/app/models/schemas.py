@@ -51,6 +51,60 @@ class SoapCommandResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Worldserver Instances
+# ---------------------------------------------------------------------------
+class WorldServerInstanceSchema(BaseModel):
+    """Read schema – returned by GET endpoints (includes live status)."""
+    id: int
+    display_name: str
+    process_name: str
+    binary_path: str
+    working_dir: str
+    conf_path: str
+    notes: str
+    sort_order: int
+    status: Optional[ProcessStatus] = None
+
+    model_config = {"from_attributes": True}
+
+
+class WorldServerInstanceCreate(BaseModel):
+    """POST body for creating a new worldserver instance."""
+    display_name: str
+    process_name: str        # unique daemon name, e.g. "worldserver-ptr"
+    binary_path: str = ""    # full path to binary; empty → use AC_BINARY_PATH default
+    working_dir: str = ""    # cwd; empty → use AC_BINARY_PATH default
+    conf_path: str = ""      # path to worldserver.conf; empty → binary default
+    notes: str = ""
+    sort_order: int = 0
+
+
+class WorldServerInstanceUpdate(BaseModel):
+    """PUT body for updating an existing instance (all fields optional)."""
+    display_name: Optional[str] = None
+    binary_path: Optional[str] = None
+    working_dir: Optional[str] = None
+    conf_path: Optional[str] = None
+    notes: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class WorldServerInstanceListResponse(BaseModel):
+    instances: list[WorldServerInstanceSchema]
+
+
+class WorldServerProvisionRequest(BaseModel):
+    """Request body for generating a worldserver.conf for a new instance."""
+    conf_output_path: str            # where to write the new .conf file
+    realm_name: str = "AzerothCore 2"
+    worldserver_port: int = 8086     # WorldServerPort
+    instance_port: int = 8087        # InstanceserverPort
+    ra_port: int = 3445              # Ra.Port
+    realm_id: int = 2                # RealmID in worldserver.conf
+    extra_overrides: Optional[dict[str, str]] = None  # any extra key=value patches
+
+
+# ---------------------------------------------------------------------------
 # Players
 # ---------------------------------------------------------------------------
 class CharacterSummary(BaseModel):

@@ -188,7 +188,7 @@ async def _do_ping() -> dict:
     return {"success": True, "message": "pong"}
 
 
-async def _do_start(name: str, binary: str, cwd: str) -> dict:
+async def _do_start(name: str, binary: str, cwd: str, args: list[str] | None = None) -> dict:
     if not binary:
         return {"success": False, "message": "binary path is required"}
     binary_path = Path(binary)
@@ -206,12 +206,14 @@ async def _do_start(name: str, binary: str, cwd: str) -> dict:
         }
 
     effective_cwd = cwd or str(binary_path.parent)
+    extra_args = args or []
     env = os.environ.copy()
 
-    logger.info(f"Starting {name}: binary={binary!r}  cwd={effective_cwd!r}")
+    logger.info(f"Starting {name}: binary={binary!r}  cwd={effective_cwd!r}  args={extra_args!r}")
     try:
         proc = await asyncio.create_subprocess_exec(
             binary,
+            *extra_args,
             cwd=effective_cwd,
             env=env,
             stdin=asyncio.subprocess.PIPE,
@@ -463,7 +465,12 @@ async def _handle_client(
         if cmd == "ping":
             response = await _do_ping()
         elif cmd == "start":
-            response = await _do_start(name, request.get("binary", ""), request.get("cwd", ""))
+            response = await _do_start(
+                name,
+                request.get("binary", ""),
+                request.get("cwd", ""),
+                request.get("args") or None,
+            )
         elif cmd == "stop":
             response = await _do_stop(name, bool(request.get("force", False)))
         elif cmd == "status":
