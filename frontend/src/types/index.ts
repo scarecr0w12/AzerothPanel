@@ -111,7 +111,7 @@ export interface LogEntry {
 export type LogSource = 'worldserver' | 'authserver' | 'gm' | 'db_errors' | 'arena' | 'char'
 
 // ─── Database ─────────────────────────────────────────────────────────────────
-export type DatabaseTarget = 'auth' | 'characters' | 'world'
+export type DatabaseTarget = 'auth' | 'characters' | 'world' | 'playerbots'
 
 export interface QueryResult {
   columns: string[]

@@ -111,3 +111,16 @@ async def get_world_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def get_playerbots_db() -> AsyncIterator[AsyncSession]:
+    from app.services.panel_settings import get_settings_dict
+    s = await get_settings_dict()
+    url = _build_mysql_url(
+        s["AC_PLAYERBOTS_DB_HOST"], s["AC_PLAYERBOTS_DB_PORT"],
+        s["AC_PLAYERBOTS_DB_USER"], s["AC_PLAYERBOTS_DB_PASSWORD"],
+        s["AC_PLAYERBOTS_DB_NAME"],
+    )
+    factory = async_sessionmaker(_get_or_create_engine(url), expire_on_commit=False)
+    async with factory() as session:
+        yield session
+
+

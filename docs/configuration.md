@@ -67,6 +67,24 @@ Same fields as Auth Database. Database name is usually `acore_world`.
 
 Same fields as Auth Database. Database name is usually `acore_characters`.
 
+### MySQL — Playerbots Database
+
+Present and used only when the `mod-playerbots` module is installed (i.e. when
+`{AC_PATH}/modules/mod-playerbots` exists). The panel auto-detects the module
+and exposes the **Playerbots** database tab in the Database Manager.
+
+| Field | Description |
+|---|---|
+| **Host** | MySQL hostname (default `127.0.0.1`). |
+| **Port** | MySQL port (default `3306`). |
+| **User** | MySQL username with access to the playerbots database. |
+| **Password** | MySQL password. |
+| **Database** | Playerbots database name (usually `acore_playerbots`). |
+
+> **Note:** These settings share the same default credentials as the other
+> AzerothCore databases. If your setup uses separate credentials for the
+> playerbots database, update them here after installation.
+
 ### SOAP
 
 | Field | Description |
@@ -109,5 +127,5 @@ game server child processes — they keep running independently on the host.
 - [ ] Change `PANEL_ADMIN_PASSWORD` from the default `admin`.
 - [ ] Set `CORS_ALLOW_ALL=false` and list explicit origins if the panel is reachable from untrusted machines.
 - [ ] Place the panel behind a TLS-terminating reverse proxy (nginx, Caddy) if accessed over the internet.
-- [ ] Restrict MySQL user permissions — the panel only needs read/write on `acore_auth`, `acore_characters`, and read on `acore_world`; it does NOT need `GRANT`, `CREATE`, or `DROP` privileges.
+- [ ] Restrict MySQL user permissions — the panel only needs read/write on `acore_auth`, `acore_characters`, and read on `acore_world`; if the playerbots module is installed, also grant access to `acore_playerbots`. The panel does NOT need `GRANT`, `CREATE`, or `DROP` privileges.
 - [ ] Do **not** expose port 8000 (backend API) directly to the network; let nginx proxy it.

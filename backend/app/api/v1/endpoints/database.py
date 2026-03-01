@@ -10,11 +10,32 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_auth_db, get_char_db, get_world_db
+from app.core.database import get_auth_db, get_char_db, get_playerbots_db, get_world_db
 from app.core.security import get_current_user
 from app.models.schemas import SqlQueryRequest, SqlQueryResponse, TableListResponse
 
 router = APIRouter(prefix="/database", tags=["Database Management"])
+
+
+async def _is_playerbots_available() -> bool:
+    """Return True if the mod-playerbots module directory exists in the AC modules path."""
+    from app.services.panel_settings import get_settings_dict
+    s = await get_settings_dict()
+    ac_path = Path(s.get("AC_PATH", "/opt/azerothcore"))
+    return (ac_path / "modules" / "mod-playerbots").is_dir()
+
+
+@router.get("/available")
+async def get_available_databases(_: dict = Depends(get_current_user)):
+    """
+    Return the list of database targets that can be queried.
+    Includes 'playerbots' only when the mod-playerbots module directory is present.
+    """
+    databases = ["auth", "characters", "world"]
+    if await _is_playerbots_available():
+        databases.append("playerbots")
+    return {"databases": databases}
+
 
 # Safety: block destructive operations
 # These patterns are blocked to prevent accidental data loss or modification
@@ -81,9 +102,12 @@ async def list_tables(
     auth_db: AsyncSession = Depends(get_auth_db),
     char_db: AsyncSession = Depends(get_char_db),
     world_db: AsyncSession = Depends(get_world_db),
+    playerbots_db: AsyncSession = Depends(get_playerbots_db),
 ):
     """List all tables in the specified AzerothCore database."""
-    db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db}
+    db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db, "playerbots": playerbots_db}
+    if database == "playerbots" and not await _is_playerbots_available():
+        raise HTTPException(status_code=404, detail="Playerbots database is not available")
     db = db_sessions.get(database)
     if db is None:
         raise HTTPException(status_code=400, detail="Unknown database")
@@ -99,6 +123,7 @@ async def execute_query(
     auth_db: AsyncSession = Depends(get_auth_db),
     char_db: AsyncSession = Depends(get_char_db),
     world_db: AsyncSession = Depends(get_world_db),
+    playerbots_db: AsyncSession = Depends(get_playerbots_db),
 ):
     """
     Execute a SQL query against an AzerothCore database.
@@ -106,7 +131,9 @@ async def execute_query(
     Write operations (INSERT, UPDATE, DELETE, etc.) are blocked for safety.
     """
     _safety_check(req.query)
-    db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db}
+    db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db, "playerbots": playerbots_db}
+    if req.database == "playerbots" and not await _is_playerbots_available():
+        raise HTTPException(status_code=404, detail="Playerbots database is not available")
     db: AsyncSession = db_sessions.get(req.database)
     if db is None:
         raise HTTPException(status_code=400, detail="Unknown database")
@@ -140,9 +167,12 @@ async def browse_table(
     auth_db: AsyncSession = Depends(get_auth_db),
     char_db: AsyncSession = Depends(get_char_db),
     world_db: AsyncSession = Depends(get_world_db),
+    playerbots_db: AsyncSession = Depends(get_playerbots_db),
 ):
     """Browse a table with pagination."""
-    db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db}
+    db_sessions = {"auth": auth_db, "characters": char_db, "world": world_db, "playerbots": playerbots_db}
+    if database == "playerbots" and not await _is_playerbots_available():
+        raise HTTPException(status_code=404, detail="Playerbots database is not available")
     db = db_sessions.get(database)
     if db is None:
         raise HTTPException(status_code=400, detail="Unknown database")
@@ -178,32 +208,45 @@ async def backup_database(
     _: dict = Depends(get_current_user),
 ):
     """Trigger a mysqldump backup of the specified database."""
-    if database not in ("auth", "characters", "world", "all"):
-        raise HTTPException(status_code=400, detail="database must be auth|characters|world|all")
-
     from app.services.panel_settings import get_settings_dict
     s = await get_settings_dict()
 
-    db_names = {
-        "auth": s["AC_AUTH_DB_NAME"],
-        "characters": s["AC_CHAR_DB_NAME"],
-        "world": s["AC_WORLD_DB_NAME"],
+    playerbots_available = await _is_playerbots_available()
+    valid = {"auth", "characters", "world", "all"}
+    if playerbots_available:
+        valid.add("playerbots")
+    if database not in valid:
+        allowed = "auth|characters|world" + ("|playerbots" if playerbots_available else "") + "|all"
+        raise HTTPException(status_code=400, detail=f"database must be {allowed}")
+
+    # Build the map of db logical name → actual db name and credentials
+    db_info = {
+        "auth":       {"name": s["AC_AUTH_DB_NAME"],        "host": s["AC_AUTH_DB_HOST"],        "user": s["AC_AUTH_DB_USER"],        "password": s["AC_AUTH_DB_PASSWORD"]},
+        "characters": {"name": s["AC_CHAR_DB_NAME"],        "host": s["AC_AUTH_DB_HOST"],        "user": s["AC_AUTH_DB_USER"],        "password": s["AC_AUTH_DB_PASSWORD"]},
+        "world":      {"name": s["AC_WORLD_DB_NAME"],       "host": s["AC_AUTH_DB_HOST"],        "user": s["AC_AUTH_DB_USER"],        "password": s["AC_AUTH_DB_PASSWORD"]},
     }
+    if playerbots_available:
+        db_info["playerbots"] = {
+            "name":     s["AC_PLAYERBOTS_DB_NAME"],
+            "host":     s["AC_PLAYERBOTS_DB_HOST"],
+            "user":     s["AC_PLAYERBOTS_DB_USER"],
+            "password": s["AC_PLAYERBOTS_DB_PASSWORD"],
+        }
 
     backup_dir = Path("/tmp/azerothpanel_backups")
     backup_dir.mkdir(exist_ok=True)
     results = []
 
-    targets = list(db_names.keys()) if database == "all" else [database]
+    targets = list(db_info.keys()) if database == "all" else [database]
     for target in targets:
-        db_name = db_names[target]
-        out_file = backup_dir / f"{db_name}_{int(time.time())}.sql"
+        info = db_info[target]
+        out_file = backup_dir / f"{info['name']}_{int(time.time())}.sql"
         cmd = [
             "mysqldump",
-            f"-h{s['AC_AUTH_DB_HOST']}",
-            f"-u{s['AC_AUTH_DB_USER']}",
-            f"-p{s['AC_AUTH_DB_PASSWORD']}",
-            db_name,
+            f"-h{info['host']}",
+            f"-u{info['user']}",
+            f"-p{info['password']}",
+            info["name"],
         ]
         try:
             with open(out_file, "w") as f:

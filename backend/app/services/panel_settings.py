@@ -46,6 +46,12 @@ DEFAULTS: dict[str, str] = {
     "AC_WORLD_DB_USER":     "acore",
     "AC_WORLD_DB_PASSWORD": "acore",
     "AC_WORLD_DB_NAME":     "acore_world",
+    # Playerbots database (optional – only present when mod-playerbots is installed)
+    "AC_PLAYERBOTS_DB_HOST":     "127.0.0.1",
+    "AC_PLAYERBOTS_DB_PORT":     "3306",
+    "AC_PLAYERBOTS_DB_USER":     "acore",
+    "AC_PLAYERBOTS_DB_PASSWORD": "acore",
+    "AC_PLAYERBOTS_DB_NAME":     "acore_playerbots",
     # SOAP (in-game GM commands)
     "AC_SOAP_HOST":     "127.0.0.1",
     "AC_SOAP_PORT":     "7878",

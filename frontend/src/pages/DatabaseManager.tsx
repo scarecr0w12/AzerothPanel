@@ -6,14 +6,24 @@ import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import type { DatabaseTarget, QueryResult } from '@/types'
 
-const DATABASES: { value: DatabaseTarget; label: string; color: string }[] = [
-  { value: 'auth',       label: 'Auth',       color: 'text-blue-400' },
-  { value: 'characters', label: 'Characters', color: 'text-yellow-400' },
-  { value: 'world',      label: 'World',      color: 'text-green-400' },
+const ALL_DATABASES: { value: DatabaseTarget; label: string; color: string }[] = [
+  { value: 'auth',        label: 'Auth',        color: 'text-blue-400' },
+  { value: 'characters',  label: 'Characters',  color: 'text-yellow-400' },
+  { value: 'world',       label: 'World',        color: 'text-green-400' },
+  { value: 'playerbots',  label: 'Playerbots',  color: 'text-purple-400' },
 ]
 
 export default function DatabaseManager() {
   const [db, setDb] = useState<DatabaseTarget>('characters')
+
+  const availableQuery = useQuery({
+    queryKey: ['db-available'],
+    queryFn: () => dbApi.available().then((r) => r.data.databases as string[]),
+    staleTime: 60_000,
+  })
+  const DATABASES = ALL_DATABASES.filter(
+    (d) => !availableQuery.data || availableQuery.data.includes(d.value),
+  )
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [sql, setSql] = useState('')
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null)

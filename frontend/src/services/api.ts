@@ -76,6 +76,8 @@ export const playersApi = {
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 export const dbApi = {
+  available: () => api.get<{ databases: string[] }>('/database/available'),
+
   tables: (database: string) => api.get(`/database/tables/${database}`),
 
   schema: (database: string, table: string) =>

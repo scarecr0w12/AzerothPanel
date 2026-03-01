@@ -7,6 +7,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] – 2026-03-01
 
+### Added – Playerbots Database Support
+
+The database manager now auto-detects when the `mod-playerbots` module is
+installed and exposes the `acore_playerbots` database alongside the standard
+three AzerothCore databases.
+
+#### `backend/app/services/panel_settings.py`
+- Added `AC_PLAYERBOTS_DB_*` defaults (`host`, `port`, `user`, `password`,
+  `name`). All default to the same `acore` user / `acore_playerbots` database
+  name used by the installer. Values are configurable from the Settings page.
+
+#### `backend/app/core/database.py`
+- Added `get_playerbots_db` async session factory, following the same dynamic
+  credentials pattern as the other three database providers.
+
+#### `backend/app/api/v1/endpoints/database.py`
+- Added `_is_playerbots_available()` — checks whether
+  `{AC_PATH}/modules/mod-playerbots` exists on disk to determine if the
+  playerbots module is installed.
+- Added `GET /database/available` endpoint that returns the list of queryable
+  database targets. Always includes `auth`, `characters`, `world`; appends
+  `playerbots` when the module directory is detected.
+- All query, browse, table-list, and backup endpoints now accept `playerbots`
+  as a valid target, guarded with a 404 when the module is absent.
+- Backup (`POST /database/backup?database=playerbots` and `...=all`) uses the
+  dedicated `AC_PLAYERBOTS_DB_*` credentials for the playerbots dump.
+
+#### `frontend/src/types/index.ts`
+- `DatabaseTarget` union type extended to include `'playerbots'`.
+
+#### `frontend/src/services/api.ts`
+- Added `dbApi.available()` — calls `GET /database/available` to retrieve the
+  runtime list of usable database targets.
+
+#### `frontend/src/pages/DatabaseManager.tsx`
+- On load, fetches `/database/available` and shows the **Playerbots** database
+  tab (purple) only when the backend reports it as available. The standard three
+  tabs are always shown while the request is in-flight.
+
 ### Added – Persistent Server Management via Host Daemon
 
 AzerothCore game servers previously ran as subprocesses of the backend Docker
