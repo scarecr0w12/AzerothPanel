@@ -202,6 +202,8 @@ The `/run` endpoint uses **Server-Sent Events (SSE)**. The client receives a str
 | `GET` | `/status` | Current or last build status (idle / running / success / failed) |
 | `POST` | `/build` | Trigger a CMake build (SSE stream of compiler output) |
 
+> **Pull Latest Source** — The Compilation page also exposes a "Pull Latest Source" button that calls `POST /modules/update-azerothcore` (see Module Manager below). The rationale is that pulling updated source and then rebuilding are sequential steps that belong on the same page.
+
 #### `POST /api/v1/compilation/build`
 
 ```json
@@ -292,6 +294,8 @@ The response is an **SSE stream** of extraction progress lines.
 | `GET` | `` | Get all current panel settings |
 | `PUT` | `` | Update panel settings |
 | `POST` | `/test-db` | Test a MySQL connection with the supplied credentials |
+| `GET` | `/panel-version` | Return current git tag, branch, commit hash, and how many commits HEAD is behind `origin/HEAD`. Requires the host daemon. |
+| `POST` | `/update-panel` | Pull the latest code from GitHub and rebuild + restart Docker containers via the host daemon (long-running, up to 660 s). Returns `{"success": bool, "output": str}`. |
 
 #### `GET /api/v1/settings`
 

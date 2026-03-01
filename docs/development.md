@@ -281,6 +281,50 @@ s.close()
 
 ---
 
+## Updating the Panel
+
+AzerothPanel can update itself (pull from GitHub + rebuild containers) without manual shell access. Three methods are available:
+
+### From the Settings page (UI)
+
+1. Open **Settings → Panel Update**.
+2. Click **Check for Updates** — displays the current tag, branch, commit hash, and how many commits the running instance is behind `origin/HEAD`.
+3. If behind, click **Update Panel** — this triggers `POST /api/v1/settings/update-panel`, which instructs the host daemon to run `git pull --rebase` and then `docker compose up --build -d`. Live output streams into a collapsible log panel.
+
+> The host daemon must be running on the host for these buttons to work. See [Host daemon in development](#host-daemon-in-development).
+
+### From the host (Makefile)
+
+```bash
+# Check current version and how far behind origin/HEAD
+make version
+
+# Pull latest and rebuild containers
+make update
+```
+
+`make update` is equivalent to:
+```bash
+git pull --rebase
+docker compose up --build -d
+```
+
+### Via the daemon directly
+
+```bash
+python3 -c "
+import socket, json
+s = socket.create_connection(('127.0.0.1', 7879))
+s.sendall(json.dumps({'cmd': 'version'}).encode() + b'\n')
+print(json.loads(s.recv(65536)))
+s.close()
+"
+```
+
+Replace `'version'` with `'update'` to trigger a full pull + rebuild.
+
+---
+
 ## UI Reference
 
 The following screenshots show the current state of each panel page. Useful as reference when developing new features or debugging layout regressions.

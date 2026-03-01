@@ -7,6 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] – 2026-03-01
 
+### Summary of changes in this release
+
+| Area | Change |
+|---|---|
+| **Panel self-update** | New Settings UI + `make version` / `make update` + host-daemon commands to pull from GitHub and rebuild containers without shell access |
+| **AzerothCore source updates** | `POST /modules/update-azerothcore` streams `git pull` output; surfaced as a **Pull Latest Source** card on the Compilation page |
+| **Module git updates** | Per-module and bulk `git pull` from Module Manager → Installed tab |
+| **UX** | Moved AC source update from Module Manager to the Compilation page (natural pull → compile workflow) |
+| **Playerbots DB** | Auto-detected `acore_playerbots` tab in Database Manager when `mod-playerbots` is installed |
+| **Host daemon** | TCP daemon (`127.0.0.1:7879`) manages game-server processes outside Docker so they survive container restarts |
+
+---
+
 ### Changed – AzerothCore Source Update Relocated to Compilation Page
 
 The "Pull Latest Source" action is now surfaced on the **Compilation** page
