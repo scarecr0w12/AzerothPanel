@@ -93,6 +93,56 @@ Response:
 
 ---
 
+### Worldserver Instances — `/api/v1/server/instances`
+
+Manage multiple independent worldserver processes from a single panel. Each instance has its own binary path, working directory, and `worldserver.conf`.
+
+![Server Control page with instances](screenshots/server_control.png)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/server/instances` | List all instances with live process status |
+| `POST` | `/server/instances` | Create a new instance |
+| `GET` | `/server/instances/{id}` | Get one instance with live status |
+| `PUT` | `/server/instances/{id}` | Update instance metadata |
+| `DELETE` | `/server/instances/{id}` | Stop (if running) then delete the instance |
+| `POST` | `/server/instances/{id}/start` | Start the instance's worldserver process |
+| `POST` | `/server/instances/{id}/stop` | Stop the instance's worldserver process |
+| `POST` | `/server/instances/{id}/restart` | Restart the instance's worldserver process |
+| `POST` | `/server/instances/{id}/command` | Send a GM console command via the daemon stdin pipe |
+| `GET` | `/server/instances/{id}/config` | Read this instance's `worldserver.conf`; falls back to global `AC_WORLDSERVER_CONF` |
+| `PUT` | `/server/instances/{id}/config` | Write updated content to this instance's `worldserver.conf` |
+| `POST` | `/server/instances/{id}/generate-config` | Copy the global conf as a template, patch ports/realm/ID, write to `conf_output_path` |
+
+#### `POST /api/v1/server/instances` — Create instance
+
+```json
+{
+  "display_name": "PTR Realm",
+  "process_name": "worldserver-ptr",
+  "binary_path": "/opt/azerothcore/bin/worldserver",
+  "working_dir": "/opt/azerothcore/bin",
+  "notes": "Public test realm"
+}
+```
+
+#### `POST /api/v1/server/instances/{id}/generate-config` — Provision a conf file
+
+```json
+{
+  "conf_output_path": "/opt/azerothcore/etc/worldserver-ptr.conf",
+  "realm_name": "PTR",
+  "realm_id": 2,
+  "worldserver_port": 8086,
+  "instance_port": 8086,
+  "ra_port": 3444
+}
+```
+
+The endpoint copies the global `worldserver.conf` and patches the specified key=value pairs in-place. The instance's `conf_path` is updated in the database.
+
+---
+
 ### Player Management — `/api/v1/players`
 
 ![Player Management page](screenshots/players.png)
@@ -158,10 +208,13 @@ Query parameters:
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/tables/{database}` | List tables in a database (`auth`, `world`, `characters`) |
+| `GET` | `/available` | List queryable database targets (`auth`, `world`, `characters`; `playerbots` when `mod-playerbots` is installed) |
+| `GET` | `/tables/{database}` | List tables in a database (`auth`, `world`, `characters`, `playerbots`) |
 | `POST` | `/query` | Execute a SQL query (read-only safety check enforced) |
 | `GET` | `/table/{database}/{table_name}` | Browse a table with pagination |
 | `POST` | `/backup` | Initiate a database backup (mysqldump) |
+
+> **Playerbots database**: The `playerbots` target is only included in `/available` (and accepted by all other endpoints) when `{AC_PATH}/modules/mod-playerbots` exists on disk. Requests using `playerbots` when the module is absent return HTTP 404.
 
 #### `POST /api/v1/database/query`
 

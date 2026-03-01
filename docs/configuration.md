@@ -28,8 +28,8 @@ AzerothPanel has two configuration layers:
 | `AC_PATH` | `/opt/azerothcore` | Absolute path to the AzerothCore installation on the **host** machine. Bind-mounted into the backend container. |
 | `CLIENT_PATH` | `/root/clientdata` | Path to a WoW 3.3.5a client on the host. Used for local data extraction. |
 | `PANEL_PORT` | `80` | Host port the panel frontend is exposed on. |
-| `AC_DAEMON_DIR` | `/var/run/azerothpanel` | Host directory containing the daemon's Unix socket. Bind-mounted into the backend container. |
-| `AC_DAEMON_SOCKET` | `/var/run/azerothpanel/ac-panel.sock` | Full socket path for backend ↔ host daemon IPC. Must match `--socket` arg passed to `ac_host_daemon.py`. |
+| `AC_DAEMON_HOST` | `127.0.0.1` | Bind address the host daemon listens on. The backend container uses `network_mode: host`, so `127.0.0.1` reaches the host loopback directly — no bind-mount needed. |
+| `AC_DAEMON_PORT` | `7879` | TCP port the host daemon listens on. Must match the `--port` argument (or `AC_DAEMON_PORT` env var) used when starting the daemon. |
 
 ---
 
@@ -99,12 +99,15 @@ and exposes the **Playerbots** database tab in the Database Manager.
 ## Host Daemon (`ac_host_daemon.py`)
 
 The host daemon manages worldserver and authserver processes outside the Docker
-cgroup so they survive panel restarts. It accepts configuration via CLI flags
-or environment variables.
+cgroup so they survive panel restarts. Communication is over **TCP** on the host
+loopback; because the backend container uses `network_mode: host`, `127.0.0.1`
+inside the container is the same loopback — no Unix socket or bind-mount is
+required.
 
 | Flag / Env | Default | Description |
 |---|---|---|
-| `--socket` / `AC_DAEMON_SOCKET` | `/var/run/azerothpanel/ac-panel.sock` | Unix socket path the daemon listens on. |
+| `--host` / `AC_DAEMON_HOST` | `127.0.0.1` | Address the daemon binds to. |
+| `--port` / `AC_DAEMON_PORT` | `7879` | TCP port the daemon listens on. |
 | `--pid-dir` / `AC_DAEMON_PID_DIR` | `/var/run/azerothpanel` | Directory for the JSON state file (`ac-daemon-state.json`). |
 | `--debug` | off | Enable verbose debug logging to stdout / journald. |
 

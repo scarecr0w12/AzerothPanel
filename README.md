@@ -10,15 +10,17 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
 
 | Category | Capabilities |
 |---|---|
-| **Server Control** | Start, stop & restart worldserver / authserver; SOAP command execution; in-game server announcements |
+| **Server Control** | Start, stop & restart worldserver / authserver; **multi-instance worldserver management** with independent per-process start/stop/restart/console; SOAP GM command execution; in-game server announcements |
+| **Multi-Instance Provisioning** | 2-step wizard creates additional worldserver instances from the UI; auto-generates a patched `worldserver.conf` with custom ports, realm name and realm ID; per-instance config tab for live editing |
 | **Player Management** | List online players, browse accounts & characters, ban/unban accounts, kick players, bulk announcements, character stat modification |
 | **Log Viewer** | Real-time log streaming (WebSocket), paginated log history, log download, multiple log sources |
-| **Database Manager** | Browse world/auth/characters databases, execute SQL queries (read-only safety checks), table browser, database backup |
-| **Compiler** | Trigger AzerothCore CMake builds with streaming SSE progress output, view build status |
+| **Database Manager** | Browse world/auth/characters/playerbots databases, execute SQL queries (read-only safety checks), table browser, database backup; **playerbots tab auto-detected** when `mod-playerbots` is installed |
+| **Compiler** | Trigger AzerothCore CMake builds with streaming SSE progress output; **Pull Latest Source** (`git pull`) from the same page |
 | **Installer** | Run the AzerothCore data installation steps with live progress, read/edit `worldserver.conf` and `authserver.conf` in-browser |
 | **Data Extraction** | Download pre-extracted client data from AzerothCore releases, or extract from local WoW 3.3.5a client (DBC, Maps, VMaps, MMaps) |
-| **Module Manager** | Browse, install, and remove AzerothCore modules from the community catalogue |
+| **Module Manager** | Browse, install, and remove AzerothCore modules from the community catalogue; **per-module and bulk `git pull` updates** |
 | **Config Editor** | In-browser syntax-highlighted editor for `worldserver.conf`, `authserver.conf`, and installed module configs |
+| **Panel Self-Update** | Check version and update the panel (git pull + Docker rebuild) from the Settings page or via `make update` — no shell access required |
 | **Settings** | Configure all AzerothCore paths, MySQL credentials, SOAP endpoint, and connection test — entirely UI-driven; no `.env` edits required after initial setup |
 | **Authentication** | JWT bearer tokens, single admin user, configurable session length |
 
@@ -214,6 +216,10 @@ make docker-down       Stop and remove containers
 make docker-logs       Tail logs from all containers
 make docker-restart    Rebuild & restart all containers
 
+# Panel updates
+make version           Print current git tag, branch, commit, and upstream lag
+make update            git pull --rebase then rebuild & restart containers
+
 # Host Process Daemon — run on the HOST machine to keep AC servers alive
 make daemon-start      Launch daemon in background (until reboot)
 make daemon-stop       Stop the daemon
@@ -242,8 +248,9 @@ AzerothPanel/
 │       ├── main.py            # Application factory, CORS, lifespan
 │       ├── api/v1/
 │       │   ├── router.py      # Route aggregation
-│       │   └── endpoints/     # auth, server, players, logs, database,
-│       │                      # installation, compilation, settings
+│       │   └── endpoints/     # auth, server, instances, players, logs,
+│       │                      # database, installation, compilation,
+│       │                      # modules, configs, settings
 │       ├── api/websockets/
 │       │   └── logs.py        # Real-time log streaming
 │       ├── core/
@@ -257,8 +264,10 @@ AzerothPanel/
 │           ├── panel_settings.py         # Settings CRUD
 │           └── azerothcore/
 │               ├── server_manager.py     # Process control (daemon or direct)
+│               ├── instance_seeder.py    # Seeds default worldserver instance
 │               ├── compiler.py           # CMake build runner
 │               ├── installer.py          # Data installation steps
+│               ├── module_manager.py     # Module clone/remove/git-pull
 │               └── soap_client.py        # SOAP RPC client
 │
 └── frontend/                  # React + TypeScript
@@ -267,11 +276,11 @@ AzerothPanel/
     └── src/
         ├── pages/             # Dashboard, ServerControl, Players, Logs,
         │                      # DatabaseManager, Compilation, Installation,
-        │                      # Settings, Login
+        │                      # ModuleManager, ConfigEditor, Settings, Login
         ├── components/        # Layout (Header/Sidebar) + UI primitives
         ├── services/api.ts    # Axios instance + typed API helpers
         ├── store/index.ts     # Zustand global store
-        ├── hooks/             # useWebSocket, useServerStatus
+        ├── hooks/             # useWebSocket, useServerStatus, useInstances
         └── types/index.ts     # Shared TypeScript interfaces
 ```
 
