@@ -328,7 +328,7 @@ export default function ModuleManager() {
   const totalPages = Math.ceil((catalogueQuery.data?.total_count ?? 0) / PER_PAGE)
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Install log modal */}
       {installTarget && (
         <LogPanel
@@ -339,16 +339,8 @@ export default function ModuleManager() {
         />
       )}
 
-      {/* Page header */}
-      <div className="flex items-center gap-3">
-        <Package size={24} className="text-brand" />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Module Manager</h1>
-          <p className="text-sm text-panel-muted mt-0.5">
-            Browse the AzerothCore catalogue and manage installed modules.
-          </p>
-        </div>
-        {/* Rate-limit badge */}
+      {/* Rate-limit badge + recompile notice */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {rateLimitQuery.data && (
           <div
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border ${
@@ -368,6 +360,11 @@ export default function ModuleManager() {
             </span>
           </div>
         )}
+        <p className="text-xs text-panel-muted">
+          After installing or removing modules, go to{' '}
+          <Link to="/compilation" className="text-brand-light hover:underline">Compilation</Link>{' '}
+          to rebuild the server.
+        </p>
       </div>
 
       {/* Tabs */}

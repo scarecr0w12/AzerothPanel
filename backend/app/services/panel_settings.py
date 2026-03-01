@@ -54,6 +54,8 @@ DEFAULTS: dict[str, str] = {
     # Remote Access / Telnet
     "AC_RA_HOST": "127.0.0.1",
     "AC_RA_PORT": "3443",
+    # GitHub integration
+    "GITHUB_TOKEN": "",
 }
 
 # Keys that affect MySQL connection URLs – changing these requires engine cache invalidation

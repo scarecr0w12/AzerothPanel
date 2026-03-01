@@ -72,11 +72,18 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
                │  host.docker.internal:8000
                ▼
 ┌─────────────────────────────────────┐
-│         FastAPI (port 8000)         │
+│   FastAPI backend (port 8000)       │
 │  REST API v1 · WebSocket logs       │
 │  SQLite (panel.db) · JWT auth       │
 └──────────────┬──────────────────────┘
-               │  direct process / file / MySQL access
+               │  Unix socket  /var/run/azerothpanel/ac-panel.sock
+               ▼
+┌─────────────────────────────────────┐
+│   ac_host_daemon.py  (HOST)         │  ← runs outside Docker
+│  owns worldserver / authserver PIDs │
+│  survives container restarts        │
+└──────────────┬──────────────────────┘
+               │  subprocess  +  MySQL / SOAP
                ▼
 ┌─────────────────────────────────────┐
 │     AzerothCore (host machine)      │
@@ -84,7 +91,9 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
 └─────────────────────────────────────┘
 ```
 
-The backend container runs with `network_mode: host` so it can reach AzerothCore processes, MySQL, and the SOAP interface that bind to `127.0.0.1` on the host. The frontend container communicates back to the backend via `host.docker.internal`.
+The backend container uses `network_mode: host` so it can reach MySQL and the SOAP interface on `127.0.0.1`. The frontend container reaches the backend via `host.docker.internal`.
+
+The **host daemon** (`ac_host_daemon.py`) is the key to persistence: it runs directly on the host (not inside any Docker container) and owns the AzerothCore server processes. Because it lives in the host's cgroup rather than the panel container's cgroup, the game servers keep running when Docker restarts the panel. The backend and daemon communicate via a bind-mounted Unix socket.
 
 ---
 
@@ -125,7 +134,25 @@ AC_PATH=/opt/azerothcore
 PANEL_PORT=80
 ```
 
-### 3 — Start the panel
+### 3 — Start the host daemon (once, before Docker)
+
+The daemon must run on the host so AzerothCore servers survive Docker restarts:
+
+```bash
+# Option A: background process (until next reboot)
+make daemon-start
+
+# Option B: install as a systemd service (auto-starts on every boot — recommended)
+sudo make daemon-install
+```
+
+Verify it is running:
+
+```bash
+make daemon-status
+```
+
+### 4 — Start the panel
 
 ```bash
 make docker-up
@@ -135,7 +162,7 @@ docker compose up --build -d
 
 Open [http://localhost](http://localhost) (or the port you set in `PANEL_PORT`).
 
-### 4 — Initial setup
+### 5 — Initial setup
 
 Log in with the admin credentials from `backend/.env`, then navigate to **Settings** to configure:
 
@@ -174,17 +201,25 @@ See [docs/api.md](docs/api.md) for a complete endpoint reference.
 ## Make Targets
 
 ```
-make install        Install all dependencies (backend + frontend)
-make dev            Run backend + frontend in development mode (no Docker)
-make backend        Run only the FastAPI backend on :8000
-make frontend       Run only the Vite dev server on :5173
-make lint           TypeScript type-check
+make install           Install all dependencies (backend + frontend)
+make dev               Run backend + frontend in development mode (no Docker)
+make backend           Run only the FastAPI backend on :8000
+make frontend          Run only the Vite dev server on :5173
+make lint              TypeScript type-check
 
-make docker-build   Build Docker images (no cache)
-make docker-up      Build & start containers in background
-make docker-down    Stop and remove containers
-make docker-logs    Tail logs from all containers
-make docker-restart Rebuild & restart all containers
+make docker-build      Build Docker images (no cache)
+make docker-quick      Build Docker images (with cache)
+make docker-up         Build & start containers in background
+make docker-down       Stop and remove containers
+make docker-logs       Tail logs from all containers
+make docker-restart    Rebuild & restart all containers
+
+# Host Process Daemon — run on the HOST machine to keep AC servers alive
+make daemon-start      Launch daemon in background (until reboot)
+make daemon-stop       Stop the daemon
+make daemon-restart    Restart the daemon
+make daemon-status     Show daemon state + managed process list
+make daemon-install    Install daemon as a systemd service (auto-start on boot)
 ```
 
 ---
@@ -201,6 +236,8 @@ AzerothPanel/
 ├── backend/                   # FastAPI application
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── ac_host_daemon.py          # HOST daemon – owns worldserver/authserver
+│   ├── azerothpanel-daemon.service # systemd unit for the host daemon
 │   └── app/
 │       ├── main.py            # Application factory, CORS, lifespan
 │       ├── api/v1/
@@ -219,7 +256,7 @@ AzerothPanel/
 │       └── services/
 │           ├── panel_settings.py         # Settings CRUD
 │           └── azerothcore/
-│               ├── server_manager.py     # Process control (start/stop)
+│               ├── server_manager.py     # Process control (daemon or direct)
 │               ├── compiler.py           # CMake build runner
 │               ├── installer.py          # Data installation steps
 │               └── soap_client.py        # SOAP RPC client
@@ -246,6 +283,12 @@ AzerothPanel/
 - **Generate a strong `SECRET_KEY`**: `openssl rand -hex 32`
 - The panel is designed for **trusted private network use**. Do not expose port 80 to the public internet without additional protection (firewall, VPN, reverse-proxy with TLS).
 - SQL queries executed through the Database Manager are subject to a server-side read-only safety check (blocks `INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`).
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a full history of changes.
 
 ---
 

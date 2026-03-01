@@ -25,8 +25,8 @@ This guide covers every supported way to install and run AzerothPanel.
 | MySQL / MariaDB | MySQL 5.7 / MariaDB 10.3 | Already required by AzerothCore |
 | Docker Engine | 24.x | Only for the Docker path |
 | Docker Compose | v2.x (`docker compose`) | Only for the Docker path |
-| Python | 3.11+ | **Only** for the manual (no-Docker) path |
-| Node.js | 20 LTS | **Only** for the manual (no-Docker) path |
+| Python | 3.11+ | Required for the host daemon (`ac_host_daemon.py`) and the manual dev path |
+| Node.js | 20 LTS | **Only** for the manual (no-Docker) dev path |
 
 ### AzerothCore SOAP
 
@@ -94,10 +94,39 @@ PANEL_ADMIN_PASSWORD=change_me
 PANEL_DB_URL=sqlite+aiosqlite:////data/panel.db
 
 # CORS (set false + populate CORS_ORIGINS for production hardening)
-CORS_ALLOW_ALL=true
+# AzerothCore Panel daemon socket directory
+AC_DAEMON_DIR=/var/run/azerothpanel
+AC_DAEMON_SOCKET=/var/run/azerothpanel/ac-panel.sock
 ```
 
-### 3. Start
+### 3. Start the host daemon
+
+> **Why this matters:** The panel backend runs inside a Docker container. If the
+> game servers were managed as container subprocesses they would be killed every
+> time you restart or update the panel. The host daemon runs outside Docker and
+> owns the AzerothCore processes, so they survive container restarts.
+
+```bash
+# Option A — quick background process (runs until next reboot)
+make daemon-start
+
+# Option B — install as a systemd service (auto-starts on every boot, recommended)
+sudo make daemon-install
+```
+
+Confirm the daemon is up:
+
+```bash
+make daemon-status
+# → Daemon running (PID 12345)
+# { "services": [{"name": "worldserver", "running": false}, ...] }
+```
+
+The daemon will now be the parent of any worldserver / authserver process that
+the panel starts. Restarting or rebuilding the Docker containers will not affect
+running game servers.
+
+### 4. Start the panel
 
 ```bash
 make docker-up
@@ -107,7 +136,7 @@ docker compose up --build -d
 
 The panel is available at `http://<your-host>:80` (or `PANEL_PORT`).
 
-### 4. First login
+### 5. First login
 
 1. Open the panel URL in your browser.
 2. Log in with the credentials from `PANEL_ADMIN_USER` / `PANEL_ADMIN_PASSWORD`.
@@ -127,7 +156,7 @@ The panel is available at `http://<your-host>:80` (or `PANEL_PORT`).
 
 5. Click **Save Settings** to apply. Changes take effect immediately — no restart required.
 
-### 5. Client Data Extraction
+### 6. Client Data Extraction
 
 Before starting the servers, you need client data files (DBC, Maps, VMaps, MMaps). Go to **Data Extraction** in the sidebar:
 

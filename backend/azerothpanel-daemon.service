@@ -1,0 +1,55 @@
+[Unit]
+Description=AzerothPanel Host Process Daemon
+Documentation=https://github.com/yourusername/azerothpanel
+# Start after network and Docker, but we intentionally do NOT depend on Docker
+# because this daemon must outlive Docker container restarts.
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__PANEL_DIR__
+
+# ── Binary and arguments ────────────────────────────────────────────────────
+# Uses the backend virtualenv's Python which already has psutil installed.
+# __PANEL_DIR__ is substituted by `make daemon-install` to the actual project
+# directory (e.g. /root/azerothpanel).
+# TCP transport is used so the panel container can reach the daemon via
+# 127.0.0.1 (network_mode: host — no bind-mount needed).
+ExecStart=__PANEL_DIR__/backend/.venv/bin/python3 __PANEL_DIR__/backend/ac_host_daemon.py \
+    --host 127.0.0.1 --port 7879
+
+# ── Environment ─────────────────────────────────────────────────────────────
+Environment=AC_DAEMON_HOST=127.0.0.1
+Environment=AC_DAEMON_PORT=7879
+
+# ── Runtime directory ───────────────────────────────────────────────────────
+# systemd creates /run/azerothpanel for PID / state files.
+# RuntimeDirectoryPreserve=yes prevents systemd from deleting the directory
+# (and the state file inside it) when the service stops or restarts.
+# Without this, the daemon loses track of running worldserver/authserver
+# processes across restarts because the state file is wiped.
+RuntimeDirectory=azerothpanel
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+
+# ── Logging ─────────────────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=azerothpanel-daemon
+
+# ── Restart policy ──────────────────────────────────────────────────────────
+# Restart the daemon automatically if it crashes, but NOT when it is stopped
+# intentionally (e.g. `systemctl stop`).
+Restart=on-failure
+RestartSec=5s
+
+# ── Allow the daemon to manage child processes freely ───────────────────────
+KillMode=process
+# Do NOT kill child processes (worldserver/authserver) when the daemon unit
+# stops – they survive independently on the host.
+KillSignal=SIGTERM
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target

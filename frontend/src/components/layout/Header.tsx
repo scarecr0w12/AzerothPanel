@@ -4,6 +4,7 @@ import { useServerStatus } from '@/hooks/useServerStatus'
 
 interface HeaderProps {
   title: string
+  subtitle?: string
 }
 
 function StatusDot({ running }: { running?: boolean }) {
@@ -16,13 +17,16 @@ function StatusDot({ running }: { running?: boolean }) {
   )
 }
 
-export default function Header({ title }: HeaderProps) {
+export default function Header({ title, subtitle }: HeaderProps) {
   const qc = useQueryClient()
   const { data: status } = useServerStatus()
 
   return (
     <header className="flex items-center justify-between px-6 py-4 border-b border-panel-border bg-panel-surface">
-      <h1 className="text-lg font-semibold text-white">{title}</h1>
+      <div>
+        <h1 className="text-lg font-semibold text-white leading-tight">{title}</h1>
+        {subtitle && <p className="text-xs text-panel-muted mt-0.5">{subtitle}</p>}
+      </div>
 
       <div className="flex items-center gap-6">
         {/* Quick server status pills */}

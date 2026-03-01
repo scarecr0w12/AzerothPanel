@@ -6,19 +6,51 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore, useAuthStore } from '@/store'
+import type { LucideIcon } from 'lucide-react'
 
-const NAV_ITEMS = [
-  { to: '/',            icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/server',      icon: Server,          label: 'Server Control' },
-  { to: '/logs',        icon: ScrollText,      label: 'Log Viewer' },
-  { to: '/players',     icon: Users,           label: 'Players' },
-  { to: '/database',    icon: Database,        label: 'Database' },
-  { to: '/compilation', icon: Hammer,          label: 'Compilation' },
-  { to: '/installation',icon: Download,        label: 'Installation' },
-  { to: '/data-extraction', icon: HardDrive,   label: 'Data Extraction' },
-  { to: '/modules',     icon: Package,         label: 'Module Manager' },
-  { to: '/configs',     icon: FileText,        label: 'Config Editor' },
-  { to: '/settings',    icon: Settings,        label: 'Settings' },
+interface NavItem {
+  to: string
+  icon: LucideIcon
+  label: string
+}
+
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Monitor',
+    items: [
+      { to: '/',     icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/logs', icon: ScrollText,      label: 'Logs' },
+    ],
+  },
+  {
+    label: 'Manage',
+    items: [
+      { to: '/server',   icon: Server,   label: 'Server Control' },
+      { to: '/players',  icon: Users,    label: 'Players' },
+      { to: '/database', icon: Database, label: 'Database' },
+    ],
+  },
+  {
+    label: 'Build & Deploy',
+    items: [
+      { to: '/installation',    icon: Download,  label: 'Installation' },
+      { to: '/compilation',     icon: Hammer,    label: 'Compilation' },
+      { to: '/data-extraction', icon: HardDrive, label: 'Data Extraction' },
+      { to: '/modules',         icon: Package,   label: 'Modules' },
+    ],
+  },
+  {
+    label: 'Configure',
+    items: [
+      { to: '/configs',  icon: FileText, label: 'Config Files' },
+      { to: '/settings', icon: Settings, label: 'Settings' },
+    ],
+  },
 ]
 
 export default function Sidebar() {
@@ -42,25 +74,41 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 space-y-1 px-2">
-        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                'transition-colors duration-150',
-                isActive
-                  ? 'bg-brand/20 text-brand-light'
-                  : 'text-gray-400 hover:bg-panel-hover hover:text-white'
-              )
-            }
-          >
-            <Icon size={18} className="shrink-0" />
-            {!sidebarCollapsed && <span>{label}</span>}
-          </NavLink>
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label}>
+            {/* Group label — hidden when collapsed */}
+            {!sidebarCollapsed && (
+              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-panel-muted">
+                {group.label}
+              </p>
+            )}
+            {sidebarCollapsed && (
+              <div className="mx-3 my-1 h-px bg-panel-border" />
+            )}
+            <div className="space-y-0.5">
+              {group.items.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium',
+                      'transition-colors duration-150',
+                      isActive
+                        ? 'bg-brand/20 text-brand-light'
+                        : 'text-gray-400 hover:bg-panel-hover hover:text-white'
+                    )
+                  }
+                  title={sidebarCollapsed ? label : undefined}
+                >
+                  <Icon size={17} className="shrink-0" />
+                  {!sidebarCollapsed && <span>{label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
@@ -77,13 +125,15 @@ export default function Sidebar() {
             'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm',
             'text-gray-400 hover:bg-danger/10 hover:text-danger transition-colors'
           )}
+          title={sidebarCollapsed ? 'Sign Out' : undefined}
         >
-          <LogOut size={18} className="shrink-0" />
+          <LogOut size={17} className="shrink-0" />
           {!sidebarCollapsed && <span>Sign Out</span>}
         </button>
         <button
           onClick={toggleSidebar}
           className="flex items-center justify-center w-full py-1 text-panel-muted hover:text-white transition-colors"
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>

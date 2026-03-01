@@ -69,6 +69,7 @@ export default function ServerControl() {
     try {
       const { data } = await serverApi.command(cmd)
       setCmdResult(data.result)
+      setCmd('')
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } }
       setCmdResult('Error: ' + (err.response?.data?.detail ?? 'Unknown error'))
@@ -97,7 +98,12 @@ export default function ServerControl() {
 
       {/* GM Console */}
       <Card>
-        <CardHeader title="GM Console" subtitle="Send commands directly to the worldserver console" />
+        <CardHeader title="GM Console" subtitle="Send SOAP commands to the worldserver — press Enter or click Execute" />
+        {!w?.running && (
+          <p className="mb-3 text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
+            Worldserver is not running. Start it above before sending commands.
+          </p>
+        )}
         <div className="flex gap-2">
           <div className="flex-1 flex items-center gap-2 bg-panel-bg border border-panel-border rounded-lg px-3">
             <Terminal size={14} className="text-panel-muted shrink-0" />
@@ -105,10 +111,11 @@ export default function ServerControl() {
               value={cmd} onChange={(e) => setCmd(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendCommand()}
               placeholder=".server info"
-              className="flex-1 bg-transparent py-2 text-sm text-white placeholder-panel-muted outline-none font-mono"
+              disabled={!w?.running}
+              className="flex-1 bg-transparent py-2 text-sm text-white placeholder-panel-muted outline-none font-mono disabled:opacity-40"
             />
           </div>
-          <Button onClick={sendCommand} loading={cmdLoading} disabled={!cmd.trim()}>
+          <Button onClick={sendCommand} loading={cmdLoading} disabled={!cmd.trim() || !w?.running}>
             Execute
           </Button>
         </div>

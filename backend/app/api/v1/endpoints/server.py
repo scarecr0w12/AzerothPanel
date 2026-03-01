@@ -16,8 +16,8 @@ router = APIRouter(prefix="/server", tags=["Server Control"])
 async def get_status(_: dict = Depends(get_current_user)):
     """Get running status, PID, CPU, and memory for both server processes."""
     return ServerStatusResponse(
-        worldserver=sm.get_process_status("worldserver"),
-        authserver=sm.get_process_status("authserver"),
+        worldserver=await sm.get_process_status_async("worldserver"),
+        authserver=await sm.get_process_status_async("authserver"),
     )
 
 

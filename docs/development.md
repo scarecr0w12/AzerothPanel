@@ -13,8 +13,9 @@ This document covers setting up a local development environment, the project con
 5. [Adding a new API endpoint](#adding-a-new-api-endpoint)
 6. [Adding a new frontend page](#adding-a-new-frontend-page)
 7. [Environment variables in development](#environment-variables-in-development)
-8. [UI Reference](#ui-reference)
-9. [Troubleshooting](#troubleshooting)
+8. [Host daemon in development](#host-daemon-in-development)
+9. [UI Reference](#ui-reference)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -87,7 +88,7 @@ backend/app/
 └── services/
     ├── panel_settings.py           # CRUD helpers for panel settings
     └── azerothcore/
-        ├── server_manager.py       # psutil-based process control
+        ├── server_manager.py       # Daemon-aware process control; falls back to direct subprocess
         ├── compiler.py             # Runs cmake/make, yields output lines
         ├── installer.py            # Runs AC installation steps
         └── soap_client.py          # HTTP SOAP client (httpx)
@@ -232,6 +233,51 @@ The frontend does not use `.env` files at runtime — Vite `import.meta.env` var
 
 ---
 
+## Host daemon in development
+
+The host daemon (`backend/ac_host_daemon.py`) is optional in a local dev setup.
+If the socket path (`AC_DAEMON_SOCKET`, default `/var/run/azerothpanel/ac-panel.sock`)
+does not exist or is unreachable, `server_manager.py` automatically falls back to
+spawning processes directly. This means **no daemon is required** to develop or
+test the panel locally.
+
+To test daemon-mode behaviour locally:
+
+```bash
+# Start the daemon in a separate terminal (uses the backend venv's Python)
+make daemon-start
+
+# Confirm it is reachable
+make daemon-status
+
+# Run the backend — it will detect the socket and route via daemon
+make backend
+```
+
+The daemon protocol is JSON-over-Unix-socket (one request / one response per
+connection). You can probe it manually:
+
+```bash
+echo '{"cmd":"list"}' | python3 -c \
+  "import socket,sys,json; s=socket.socket(socket.AF_UNIX); \
+   s.connect('/var/run/azerothpanel/ac-panel.sock'); \
+   s.sendall(sys.stdin.buffer.read()); \
+   print(json.dumps(json.loads(s.recv(4096)),indent=2)); s.close()"
+```
+
+### Daemon commands reference
+
+| Command | Required fields | Description |
+|---|---|---|
+| `ping` | — | Health check; returns `{"success": true, "message": "pong"}`. |
+| `start` | `name`, `binary`, `cwd` | Launch a server process. |
+| `stop` | `name` | Gracefully stop (`SIGTERM → SIGKILL`). |
+| `status` | `name` | Return running state, PID, CPU, memory. |
+| `list` | — | Status of all tracked services. |
+| `console` | `name`, `command` | Write a command to the server's stdin. |
+
+---
+
 ## UI Reference
 
 The following screenshots show the current state of each panel page. Useful as reference when developing new features or debugging layout regressions.
@@ -318,3 +364,28 @@ JWT tokens are signed with `SECRET_KEY`. If you changed `SECRET_KEY`, existing t
 ### Docker: backend cannot reach MySQL
 
 The backend container uses `network_mode: host`, meaning `127.0.0.1` inside the container resolves to the host. If MySQL is bound only to a specific interface, ensure it is accessible from the host's loopback or update the MySQL host in **Settings** to the correct IP.
+
+### worldserver / authserver stops when I restart the panel containers
+
+This happens when the game servers are running as subprocesses of the backend
+container. Docker kills the entire container cgroup on restart.
+
+**Fix:** start the host daemon so it owns the server processes outside Docker:
+
+```bash
+# One-time background start
+make daemon-start
+
+# Or install as a persistent systemd service
+sudo make daemon-install
+```
+
+Once the daemon is running, any server started through the panel will be a child
+of the daemon (host cgroup), not the Docker container. Container restarts will
+not affect running game servers.
+
+### Daemon is running but panel still shows servers as stopped
+
+- Verify `AC_DAEMON_SOCKET` in `docker-compose.yml` / `backend/.env` matches the socket path used by the daemon.
+- Ensure the socket directory is bind-mounted into the backend container (`docker-compose.yml` `volumes` section).
+- Run `make daemon-status` on the host and `docker exec azerothpanel-backend ls -la /var/run/azerothpanel/` to confirm the socket is visible inside the container.

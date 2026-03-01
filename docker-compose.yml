@@ -15,6 +15,12 @@ services:
     restart: unless-stopped
     env_file: ./backend/.env
     network_mode: host
+    environment:
+      # TCP address for the host process daemon (ac_host_daemon.py).
+      # The backend uses network_mode: host so 127.0.0.1 in the container is the
+      # host loopback — no bind-mount needed.
+      - AC_DAEMON_HOST=${AC_DAEMON_HOST:-127.0.0.1}
+      - AC_DAEMON_PORT=${AC_DAEMON_PORT:-7879}
     volumes:
       # AC_PATH is read from .env (root). Falls back to /opt/azerothcore.
       - ${AC_PATH:-/opt/azerothcore}:${AC_PATH:-/opt/azerothcore}:rw

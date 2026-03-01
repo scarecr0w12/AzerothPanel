@@ -99,12 +99,50 @@ async def run_build(
         # ------------------------------------------------------------------
         # Phase 1: cmake configure
         # ------------------------------------------------------------------
+        # Wipe stale CMake cache files before configuring.  A leftover
+        # CMakeCache.txt from a previous build that had libmariadb.so will
+        # cause the linker to look for that library even though the current
+        # environment ships libmysqlclient.so (Oracle MySQL).
+        for stale in ["CMakeCache.txt", "CMakeFiles"]:
+            stale_path = build_path / stale
+            if stale_path.exists():
+                import shutil
+                if stale_path.is_dir():
+                    shutil.rmtree(stale_path)
+                else:
+                    stale_path.unlink()
+                yield f"[cmake] Removed stale {stale}"
+
+        # Detect the real libmysqlclient path so we can pin it explicitly.
+        # This prevents cmake from accidentally resolving to libmariadb.so
+        # when both MySQL and MariaDB connector packages are installed.
+        import subprocess as _sp
+        try:
+            _mc_libs = _sp.check_output(
+                ["mysql_config", "--libs"], text=True
+            ).strip()
+            # Extract -L path; fallback to the standard location.
+            _lib_dir = "/usr/lib/x86_64-linux-gnu"
+            for _token in _mc_libs.split():
+                if _token.startswith("-L"):
+                    _lib_dir = _token[2:]
+                    break
+            _mysql_lib = f"{_lib_dir}/libmysqlclient.so"
+            _mysql_inc = _sp.check_output(
+                ["mysql_config", "--include"], text=True
+            ).strip().lstrip("-I").split()[0]
+        except Exception:
+            _mysql_lib = "/usr/lib/x86_64-linux-gnu/libmysqlclient.so"
+            _mysql_inc = "/usr/include/mysql"
+
         extra = cmake_extra.strip()
         cmake_cmd = (
             f"cmake {ac_path} "
             f"-DCMAKE_INSTALL_PREFIX={install_prefix} "
             f"-DCMAKE_BUILD_TYPE={build_type} "
             f"-DTOOLS_BUILD=all "
+            f"-DMYSQL_LIBRARY={_mysql_lib} "
+            f"-DMYSQL_INCLUDE_DIR={_mysql_inc} "
             f"{extra}"
         )
         yield f"[cmake] {cmake_cmd}"
@@ -160,6 +198,43 @@ async def run_build(
                 yield f"[install] {line}"
             except asyncio.TimeoutError:
                 pass
+
+        # ------------------------------------------------------------------
+        # Phase 4: deploy module config files
+        # ------------------------------------------------------------------
+        # For every module that ships a conf/*.conf.dist, ensure the dest
+        # modules/ directory has both the .conf.dist template and a live
+        # .conf (copied from the template only when no .conf exists yet, so
+        # existing edits are never overwritten).
+        conf_dir = Path(s["AC_CONF_PATH"])
+        modules_src = ac_path / "modules"
+        dest_modules = conf_dir / "modules"
+        dest_modules.mkdir(parents=True, exist_ok=True)
+
+        deployed: list[str] = []
+        skipped: list[str] = []
+
+        import shutil as _shutil
+        for dist_src in sorted(modules_src.glob("*/conf/*.conf.dist")):
+            stem = dist_src.stem  # e.g. "playerbots.conf"  (removes .dist)
+            dest_dist = dest_modules / dist_src.name   # keep the .conf.dist too
+            dest_conf  = dest_modules / stem            # the live .conf
+
+            # Always refresh the .conf.dist template
+            _shutil.copy2(dist_src, dest_dist)
+
+            if dest_conf.exists():
+                skipped.append(stem)
+            else:
+                _shutil.copy2(dist_src, dest_conf)
+                deployed.append(stem)
+
+        if deployed:
+            yield f"[config] Deployed new module configs: {', '.join(deployed)}"
+        if skipped:
+            yield f"[config] Kept existing module configs: {', '.join(skipped)}"
+        if not deployed and not skipped:
+            yield "[config] No module config files found to deploy."
 
         _build_state.update(running=False, progress=100.0, step="done", error=None)
         yield "[done] Build completed successfully!"

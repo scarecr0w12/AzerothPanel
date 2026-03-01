@@ -26,7 +26,10 @@ AzerothPanel has two configuration layers:
 | Variable | Default | Description |
 |---|---|---|
 | `AC_PATH` | `/opt/azerothcore` | Absolute path to the AzerothCore installation on the **host** machine. Bind-mounted into the backend container. |
+| `CLIENT_PATH` | `/root/clientdata` | Path to a WoW 3.3.5a client on the host. Used for local data extraction. |
 | `PANEL_PORT` | `80` | Host port the panel frontend is exposed on. |
+| `AC_DAEMON_DIR` | `/var/run/azerothpanel` | Host directory containing the daemon's Unix socket. Bind-mounted into the backend container. |
+| `AC_DAEMON_SOCKET` | `/var/run/azerothpanel/ac-panel.sock` | Full socket path for backend ↔ host daemon IPC. Must match `--socket` arg passed to `ac_host_daemon.py`. |
 
 ---
 
@@ -72,6 +75,31 @@ Same fields as Auth Database. Database name is usually `acore_characters`.
 | **Port** | SOAP port (default `7878`). Must match `SOAP.Port` in `worldserver.conf`. |
 | **User** | In-game account with GM level 3 used for SOAP commands. |
 | **Password** | Password for the SOAP account. |
+
+---
+
+## Host Daemon (`ac_host_daemon.py`)
+
+The host daemon manages worldserver and authserver processes outside the Docker
+cgroup so they survive panel restarts. It accepts configuration via CLI flags
+or environment variables.
+
+| Flag / Env | Default | Description |
+|---|---|---|
+| `--socket` / `AC_DAEMON_SOCKET` | `/var/run/azerothpanel/ac-panel.sock` | Unix socket path the daemon listens on. |
+| `--pid-dir` / `AC_DAEMON_PID_DIR` | `/var/run/azerothpanel` | Directory for the JSON state file (`ac-daemon-state.json`). |
+| `--debug` | off | Enable verbose debug logging to stdout / journald. |
+
+Start the daemon:
+
+```bash
+make daemon-start          # background process
+sudo make daemon-install   # systemd service (recommended)
+```
+
+The daemon's systemd unit (`backend/azerothpanel-daemon.service`) uses
+`KillMode=process`, which means stopping the unit does **not** terminate the
+game server child processes — they keep running independently on the host.
 
 ---
 

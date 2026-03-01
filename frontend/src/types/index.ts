@@ -145,6 +145,42 @@ export interface InstallCheck {
   log_dir: boolean
 }
 
+// ─── Module Manager ───────────────────────────────────────────────────────────
+export interface CatalogueModule {
+  id: number
+  name: string
+  full_name: string
+  description: string
+  html_url: string
+  clone_url: string
+  ssh_url: string
+  stars: number
+  forks: number
+  open_issues: number
+  default_branch: string
+  updated_at: string
+  pushed_at: string
+  archived: boolean
+  topics: string[]
+  owner_avatar: string
+  owner_login: string
+  installed: boolean
+}
+
+export interface CatalogueResponse {
+  total_count: number
+  page: number
+  per_page: number
+  items: CatalogueModule[]
+}
+
+export interface InstalledModule {
+  name: string
+  path: string
+  has_git: boolean
+  remote_url: string | null
+}
+
 // ─── Panel Settings ───────────────────────────────────────────────────────────
 export interface PanelSettings {
   // Paths
@@ -183,5 +219,7 @@ export interface PanelSettings {
   // Remote Access
   AC_RA_HOST: string
   AC_RA_PORT: string
+  // GitHub
+  GITHUB_TOKEN: string
 }
 

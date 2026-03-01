@@ -68,7 +68,7 @@ Authorization: Bearer eyJ...
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/status` | Worldserver & authserver running status, online player count |
+| `GET` | `/status` | Worldserver & authserver running status, PID, CPU %, memory. Queries the host daemon when available; falls back to psutil when daemon is absent. |
 | `POST` | `/worldserver/start` | Start the worldserver process |
 | `POST` | `/worldserver/stop` | Stop the worldserver process |
 | `POST` | `/worldserver/restart` | Restart the worldserver process |
