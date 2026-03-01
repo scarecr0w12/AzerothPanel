@@ -93,10 +93,9 @@ PANEL_ADMIN_PASSWORD=change_me
 # SQLite panel database (leave as-is for Docker)
 PANEL_DB_URL=sqlite+aiosqlite:////data/panel.db
 
-# CORS (set false + populate CORS_ORIGINS for production hardening)
-# AzerothCore Panel daemon socket directory
-AC_DAEMON_DIR=/var/run/azerothpanel
-AC_DAEMON_SOCKET=/var/run/azerothpanel/ac-panel.sock
+# Host daemon TCP address (daemon runs on the host; backend uses network_mode: host)
+AC_DAEMON_HOST=127.0.0.1
+AC_DAEMON_PORT=7879
 ```
 
 ### 3. Start the host daemon
@@ -261,9 +260,32 @@ panel.example.com {
 
 ## Updating the panel
 
+There are three equivalent ways to update AzerothPanel to the latest version from GitHub.
+
+### Option A — Panel UI (requires daemon)
+
+1. Go to **Settings** in the sidebar.
+2. Scroll to the **Panel Update** section.
+3. Click **Check for Updates** to see how many commits behind origin you are.
+4. Click **Update Panel** to pull and rebuild. A live output log is shown;
+   the containers restart automatically when the build finishes.
+
+> The host daemon must be running (`make daemon-start` / `make daemon-install`)
+> for the UI update path to work, because `git pull` and `docker compose` must
+> run on the host, not inside the container.
+
+### Option B — Make target (on the host)
+
 ```bash
-git pull
-make docker-restart
+make version   # optional: check how far behind origin you are
+make update    # git pull --rebase  →  docker compose up --build -d
+```
+
+### Option C — Manual steps
+
+```bash
+git pull --rebase
+docker compose up --build -d
 ```
 
 Database migrations run automatically on startup via SQLAlchemy `create_all`.

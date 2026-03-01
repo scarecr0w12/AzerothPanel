@@ -38,6 +38,8 @@ Request shapes:
     {"cmd": "status",  "name": "worldserver"}
     {"cmd": "list"}
     {"cmd": "console", "name": "worldserver",  "command": "server info"}
+    {"cmd": "version", "project_dir": "/root/azerothpanel"}
+    {"cmd": "update",  "project_dir": "/root/azerothpanel"}
 
 All responses include at minimum: {"success": bool, "message": str}
 """
@@ -69,6 +71,11 @@ except PermissionError:
     _default_pid_dir = "/tmp/azerothpanel"
 
 DEFAULT_PID_DIR = os.environ.get("AC_DAEMON_PID_DIR", _default_pid_dir)
+
+# Auto-detect the panel project root: ac_host_daemon.py lives in backend/,
+# so the project root is one level up.
+_DAEMON_SCRIPT_DIR = Path(__file__).resolve().parent   # .../azerothpanel/backend/
+_PROJECT_DIR = _DAEMON_SCRIPT_DIR.parent               # .../azerothpanel/
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -311,6 +318,99 @@ def _do_list() -> dict:
     return {"success": True, "services": services}
 
 
+async def _run_cmd(args: list[str], cwd: str) -> tuple[int, str]:
+    """Run a shell command, return (returncode, combined stdout+stderr output)."""
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=cwd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+    return proc.returncode, stdout.decode(errors="replace")
+
+
+async def _do_version(project_dir: str = "") -> dict:
+    """Return the current git commit hash, branch, and latest tag for the panel repo."""
+    if not project_dir:
+        project_dir = str(_PROJECT_DIR)
+    if not Path(project_dir).is_dir():
+        return {"success": False, "message": f"project_dir not found: {project_dir!r}"}
+
+    results: dict = {"success": True}
+
+    rc, out = await _run_cmd(["git", "rev-parse", "--short", "HEAD"], project_dir)
+    results["commit"] = out.strip() if rc == 0 else "unknown"
+
+    rc, out = await _run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], project_dir)
+    results["branch"] = out.strip() if rc == 0 else "unknown"
+
+    rc, out = await _run_cmd(["git", "describe", "--tags", "--always"], project_dir)
+    results["version"] = out.strip() if rc == 0 else results["commit"]
+
+    # Check how many commits behind origin we are (best-effort, no network call)
+    await _run_cmd(["git", "fetch", "--quiet", "--tags"], project_dir)
+    rc, out = await _run_cmd(
+        ["git", "rev-list", "--count", "HEAD..origin/HEAD"], project_dir
+    )
+    try:
+        results["commits_behind"] = int(out.strip()) if rc == 0 else None
+    except ValueError:
+        results["commits_behind"] = None
+
+    results["message"] = (
+        f"Version {results['version']} on branch {results['branch']} "
+        f"({results['commits_behind'] or 0} commit(s) behind origin)"
+    )
+    return results
+
+
+async def _do_update(project_dir: str = "") -> dict:
+    """
+    Pull the latest code from origin and rebuild/restart the Docker containers.
+    This runs entirely on the HOST so that git pull affects the real source tree.
+    """
+    if not project_dir:
+        project_dir = str(_PROJECT_DIR)
+    if not Path(project_dir).is_dir():
+        return {"success": False, "message": f"project_dir not found: {project_dir!r}"}
+
+    output_lines: list[str] = []
+
+    # 1. git pull
+    logger.info(f"[update] git pull in {project_dir!r}")
+    rc, out = await _run_cmd(["git", "pull", "--rebase"], project_dir)
+    output_lines.append("=== git pull ===")
+    output_lines.append(out.strip())
+    if rc != 0:
+        return {
+            "success": False,
+            "message": "git pull failed",
+            "output": "\n".join(output_lines),
+        }
+
+    # 2. docker compose up --build -d
+    logger.info(f"[update] docker compose up --build -d in {project_dir!r}")
+    rc, out = await _run_cmd(
+        ["docker", "compose", "up", "--build", "-d"], project_dir
+    )
+    output_lines.append("\n=== docker compose up --build -d ===")
+    output_lines.append(out.strip())
+    if rc != 0:
+        return {
+            "success": False,
+            "message": "docker compose rebuild failed",
+            "output": "\n".join(output_lines),
+        }
+
+    logger.info("[update] Panel updated and containers restarted successfully")
+    return {
+        "success": True,
+        "message": "Panel updated and containers restarted successfully",
+        "output": "\n".join(output_lines),
+    }
+
+
 async def _do_console(name: str, command: str) -> dict:
     info = _registry.get(name)
     if info is None:
@@ -372,6 +472,10 @@ async def _handle_client(
             response = _do_list()
         elif cmd == "console":
             response = await _do_console(name, request.get("command", ""))
+        elif cmd == "version":
+            response = await _do_version(request.get("project_dir", ""))
+        elif cmd == "update":
+            response = await _do_update(request.get("project_dir", ""))
         else:
             response = {"success": False, "message": f"Unknown command: {cmd!r}"}
 

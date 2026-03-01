@@ -169,6 +169,8 @@ export const settingsApi = {
     password: string
     db_name: string
   }) => api.post('/settings/test-db', data),
+  panelVersion: () => api.get('/settings/panel-version'),
+  updatePanel: () => api.post('/settings/update-panel'),
 }
 
 // ─── Installation (streaming) ──────────────────────────────────────────────────

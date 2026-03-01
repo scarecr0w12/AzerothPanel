@@ -1,4 +1,4 @@
-.PHONY: help install dev backend frontend lint check docker-up docker-down docker-build docker-logs docker-restart docker-quick daemon-start daemon-stop daemon-restart daemon-status daemon-install
+.PHONY: help install dev backend frontend lint check docker-up docker-down docker-build docker-logs docker-restart docker-quick daemon-start daemon-stop daemon-restart daemon-status daemon-install update version
 
 help:
 	@echo "AzerothPanel – Available commands"
@@ -15,6 +15,10 @@ help:
 	@echo "  make docker-down       Stop and remove containers"
 	@echo "  make docker-logs       Tail logs from all containers"
 	@echo "  make docker-restart    Rebuild & restart all containers"
+	@echo ""
+	@echo "  Update commands:"
+	@echo "  make version           Show current version and commits behind origin"
+	@echo "  make update            Pull latest code from GitHub & rebuild containers"
 	@echo ""
 	@echo "  Host Process Daemon (run ONCE on the host machine):"
 	@echo "  make daemon-start      Start the AC host daemon in the background"
@@ -94,6 +98,25 @@ docker-restart:
 	docker compose down
 	docker compose up --build -d
 	@echo "✓ Restarted → http://localhost:$$(grep -E '^PANEL_PORT=' .env 2>/dev/null | cut -d= -f2 || echo 80)"
+
+# ─── Update ───────────────────────────────────────────────────────────────────
+
+version:
+	@echo "→ AzerothPanel version info"
+	@git describe --tags --always 2>/dev/null || git rev-parse --short HEAD
+	@echo "  Branch: $$(git rev-parse --abbrev-ref HEAD)"
+	@echo "  Commit: $$(git rev-parse --short HEAD)"
+	@git fetch --quiet --tags 2>/dev/null; \
+	  BEHIND=$$(git rev-list --count HEAD..origin/HEAD 2>/dev/null || echo "?"); \
+	  if [ "$$BEHIND" = "0" ]; then echo "  Status: Up to date"; \
+	  else echo "  Status: $$BEHIND commit(s) behind origin"; fi
+
+update:
+	@echo "→ Pulling latest AzerothPanel from GitHub…"
+	git pull --rebase
+	@echo "→ Rebuilding and restarting containers…"
+	docker compose up --build -d
+	@echo "✓ AzerothPanel updated → http://localhost:$$(grep -E '^PANEL_PORT=' .env 2>/dev/null | cut -d= -f2 || echo 80)"
 
 # ─── Host Process Daemon ──────────────────────────────────────────────────────
 # The daemon runs ON THE HOST (not inside Docker) so that worldserver and

@@ -7,6 +7,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] – 2026-03-01
 
+### Added – Panel Self-Update
+
+AzerothPanel can now update itself from the GitHub repository with a single
+command or button click — no manual `git pull` + rebuild dance required.
+
+#### `backend/ac_host_daemon.py`
+- Added `version` daemon command — fetches origin tags silently, returns current
+  `commit`, `branch`, `version` (from `git describe`), and `commits_behind`
+  (number of commits HEAD is behind `origin/HEAD`).
+- Added `update` daemon command — runs `git pull --rebase` then
+  `docker compose up --build -d` in the project directory from the **host**,
+  so the real source tree is updated and the containers are rebuilt/restarted
+  correctly. Project directory is auto-detected from `__file__` (no config).
+- `_run_cmd()` helper — thin asyncio wrapper around `create_subprocess_exec`
+  with combined stdout+stderr capture and a 600-second timeout (sufficient for
+  Docker rebuilds).
+
+#### `backend/app/api/v1/endpoints/settings.py`
+- Added `GET /api/v1/settings/panel-version` — proxies the daemon `version`
+  command; returns version metadata as JSON. Returns HTTP 503 when the daemon
+  is unreachable.
+- Added `POST /api/v1/settings/update-panel` — proxies the daemon `update`
+  command with a 660-second timeout to allow for full Docker image rebuilds.
+  Returns HTTP 503 when the daemon is unreachable; HTTP 500 on update failure
+  with the error detail from the daemon.
+
+#### `frontend/src/services/api.ts`
+- Added `settingsApi.panelVersion()` — `GET /settings/panel-version`.
+- Added `settingsApi.updatePanel()` — `POST /settings/update-panel`.
+
+#### `frontend/src/pages/Settings.tsx`
+- New **Panel Update** section (above GitHub Integration) with:
+  - **Check for Updates** button — displays current version tag, branch, commit
+    hash, and a colour-coded "N commit(s) behind origin" / "Up to date" badge.
+  - **Update Panel** button — triggers `POST /settings/update-panel`; shows
+    scrollable git pull + Docker compose output in a collapsible log panel on
+    completion or error.
+- Imports `DownloadCloud`, `GitBranch`, `Tag` from `lucide-react`.
+
+#### `Makefile`
+- Added `make version` — prints tag, branch, commit, and upstream lag from git.
+- Added `make update` — `git pull --rebase` then `docker compose up --build -d`.
+- Both targets included in `help` output and `.PHONY`.
+
+---
+
 ### Added – Playerbots Database Support
 
 The database manager now auto-detects when the `mod-playerbots` module is

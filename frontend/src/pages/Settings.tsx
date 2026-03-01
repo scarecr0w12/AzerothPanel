@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, XCircle, Loader2, Save, RefreshCw, Github } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Save, RefreshCw, Github, DownloadCloud, GitBranch, Tag } from 'lucide-react'
 import { settingsApi, modulesApi } from '@/services/api'
 import type { PanelSettings } from '@/types'
 
@@ -79,6 +79,151 @@ function TestDbButton({
 }
 
 
+
+// ─── Panel Update section ────────────────────────────────────────────────────
+
+interface PanelVersionInfo {
+  success: boolean
+  commit?: string
+  branch?: string
+  version?: string
+  commits_behind?: number | null
+  message?: string
+}
+
+function PanelUpdateSection() {
+  const [info, setInfo] = useState<PanelVersionInfo | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [updateOutput, setUpdateOutput] = useState('')
+  const [updateError, setUpdateError] = useState('')
+  const [updateSuccess, setUpdateSuccess] = useState(false)
+
+  const checkVersion = async () => {
+    setChecking(true)
+    setInfo(null)
+    try {
+      const res = await settingsApi.panelVersion()
+      setInfo(res.data as PanelVersionInfo)
+    } catch (e: unknown) {
+      setInfo({ success: false, message: e instanceof Error ? e.message : 'Failed to reach daemon' })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const runUpdate = async () => {
+    setUpdating(true)
+    setUpdateOutput('')
+    setUpdateError('')
+    setUpdateSuccess(false)
+    try {
+      const res = await settingsApi.updatePanel()
+      const d = res.data as { success: boolean; message: string; output?: string }
+      setUpdateOutput(d.output ?? d.message)
+      setUpdateSuccess(true)
+      // Re-check version after update
+      await checkVersion()
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'response' in e) {
+        const axiosErr = e as { response?: { data?: { detail?: string } } }
+        setUpdateError(axiosErr.response?.data?.detail ?? 'Update failed')
+      } else {
+        setUpdateError(e instanceof Error ? e.message : 'Update failed')
+      }
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <div className="bg-panel-surface border border-panel-border rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-panel-border">
+        <DownloadCloud size={15} className="text-white" />
+        <h3 className="text-sm font-semibold text-white">Panel Update</h3>
+      </div>
+
+      <p className="text-xs text-panel-muted mb-4">
+        Pull the latest AzerothPanel code from GitHub and rebuild the containers.
+        The host daemon must be running (<code className="text-xs font-mono text-brand-light">make daemon-start</code>).
+        The panel will automatically restart after a successful update.
+      </p>
+
+      {/* Version info */}
+      {info && info.success && (
+        <div className="flex flex-wrap gap-4 mb-4 text-xs text-panel-muted">
+          <span className="flex items-center gap-1"><Tag size={12} className="text-brand-light" />{info.version}</span>
+          <span className="flex items-center gap-1"><GitBranch size={12} className="text-brand-light" />{info.branch}</span>
+          <span className="flex items-center gap-1 font-mono">{info.commit}</span>
+          {info.commits_behind != null && (
+            <span className={`flex items-center gap-1 font-medium ${
+              info.commits_behind > 0 ? 'text-yellow-400' : 'text-success'
+            }`}>
+              {info.commits_behind > 0
+                ? `${info.commits_behind} commit(s) behind origin`
+                : 'Up to date'}
+            </span>
+          )}
+        </div>
+      )}
+      {info && !info.success && (
+        <div className="flex items-center gap-1 mb-4 text-xs text-danger">
+          <XCircle size={12} />{info.message}
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <button
+          onClick={checkVersion}
+          disabled={checking || updating}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                     bg-panel-hover text-gray-300 hover:text-white border border-panel-border
+                     disabled:opacity-50 transition-colors"
+        >
+          {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          Check for Updates
+        </button>
+
+        <button
+          onClick={runUpdate}
+          disabled={updating || checking}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                     bg-brand text-white hover:bg-brand/90
+                     disabled:opacity-50 transition-colors"
+        >
+          {updating ? <Loader2 size={13} className="animate-spin" /> : <DownloadCloud size={13} />}
+          {updating ? 'Updating…' : 'Update Panel'}
+        </button>
+      </div>
+
+      {/* Output */}
+      {(updateOutput || updateError) && (
+        <div className={`mt-4 rounded-lg border p-3 ${
+          updateError
+            ? 'border-danger/30 bg-danger/5'
+            : 'border-success/30 bg-success/5'
+        }`}>
+          {updateSuccess && (
+            <div className="flex items-center gap-1 text-xs text-success mb-2 font-medium">
+              <CheckCircle size={13} /> Update completed – containers are restarting
+            </div>
+          )}
+          {updateError && (
+            <div className="flex items-center gap-1 text-xs text-danger mb-2 font-medium">
+              <XCircle size={13} /> {updateError}
+            </div>
+          )}
+          {updateOutput && (
+            <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto">{
+              updateOutput
+            }</pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Test GitHub token button ─────────────────────────────────────────────────
 
@@ -279,6 +424,9 @@ export default function Settings() {
         <Field label="GM Account"    name="AC_SOAP_USER"     value={form.AC_SOAP_USER}     onChange={set} />
         <Field label="GM Password"   name="AC_SOAP_PASSWORD" value={form.AC_SOAP_PASSWORD} onChange={set} type="password" />
       </SectionCard>
+
+      {/* ── Panel Update ── */}
+      <PanelUpdateSection />
 
       {/* ── GitHub ── */}
       <div className="bg-panel-surface border border-panel-border rounded-xl p-5">

@@ -236,10 +236,9 @@ The frontend does not use `.env` files at runtime — Vite `import.meta.env` var
 ## Host daemon in development
 
 The host daemon (`backend/ac_host_daemon.py`) is optional in a local dev setup.
-If the socket path (`AC_DAEMON_SOCKET`, default `/var/run/azerothpanel/ac-panel.sock`)
-does not exist or is unreachable, `server_manager.py` automatically falls back to
-spawning processes directly. This means **no daemon is required** to develop or
-test the panel locally.
+If the TCP port (`AC_DAEMON_PORT`, default `7879`) is unreachable,
+`server_manager.py` automatically falls back to spawning processes directly.
+This means **no daemon is required** to develop or test the panel locally.
 
 To test daemon-mode behaviour locally:
 
@@ -250,24 +249,26 @@ make daemon-start
 # Confirm it is reachable
 make daemon-status
 
-# Run the backend — it will detect the socket and route via daemon
+# Run the backend — it will detect the daemon and route via it
 make backend
 ```
 
-The daemon protocol is JSON-over-Unix-socket (one request / one response per
-connection). You can probe it manually:
+The daemon protocol is **JSON-over-TCP** (one request / one response per
+connection, newline-terminated). You can probe it manually:
 
 ```bash
-echo '{"cmd":"list"}' | python3 -c \
-  "import socket,sys,json; s=socket.socket(socket.AF_UNIX); \
-   s.connect('/var/run/azerothpanel/ac-panel.sock'); \
-   s.sendall(sys.stdin.buffer.read()); \
-   print(json.dumps(json.loads(s.recv(4096)),indent=2)); s.close()"
+python3 -c "
+import socket, json
+s = socket.create_connection(('127.0.0.1', 7879))
+s.sendall(json.dumps({'cmd': 'list'}).encode() + b'\n')
+print(json.dumps(json.loads(s.recv(65536)), indent=2))
+s.close()
+"
 ```
 
 ### Daemon commands reference
 
-| Command | Required fields | Description |
+| Command | Optional fields | Description |
 |---|---|---|
 | `ping` | — | Health check; returns `{"success": true, "message": "pong"}`. |
 | `start` | `name`, `binary`, `cwd` | Launch a server process. |
@@ -275,6 +276,8 @@ echo '{"cmd":"list"}' | python3 -c \
 | `status` | `name` | Return running state, PID, CPU, memory. |
 | `list` | — | Status of all tracked services. |
 | `console` | `name`, `command` | Write a command to the server's stdin. |
+| `version` | `project_dir` | Return current git commit, branch, tag, and commits behind origin. |
+| `update` | `project_dir` | `git pull --rebase` then `docker compose up --build -d`; returns combined output. |
 
 ---
 
@@ -386,6 +389,6 @@ not affect running game servers.
 
 ### Daemon is running but panel still shows servers as stopped
 
-- Verify `AC_DAEMON_SOCKET` in `docker-compose.yml` / `backend/.env` matches the socket path used by the daemon.
-- Ensure the socket directory is bind-mounted into the backend container (`docker-compose.yml` `volumes` section).
-- Run `make daemon-status` on the host and `docker exec azerothpanel-backend ls -la /var/run/azerothpanel/` to confirm the socket is visible inside the container.
+- Verify `AC_DAEMON_HOST` / `AC_DAEMON_PORT` in `docker-compose.yml` / `backend/.env` match the values used to start the daemon.
+- The backend uses `network_mode: host`, so `127.0.0.1` inside the container is the host loopback — no bind-mount is needed.
+- Run `make daemon-status` on the host to confirm the daemon is listening.
