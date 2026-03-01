@@ -7,6 +7,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] – 2026-03-01
 
+### Added – AzerothCore Source & Module Updates
+
+The Module Manager can now pull the latest code for the AzerothCore source
+tree and for any installed module directly from the panel — no SSH or shell
+access required.
+
+#### `backend/app/services/azerothcore/module_manager.py`
+- Added `update_azerothcore(ac_path)` — `git pull --rebase` +
+  `git submodule update --init --recursive` for the AzerothCore source tree.
+  Streams output line-by-line as an async generator.
+- Added `update_module(module_name, modules_path)` — same pull + submodule
+  update for a single installed module directory.
+- Added `update_all_modules(modules_path)` — iterates every sub-directory
+  that contains a `.git` folder and runs the same sequence, collecting per-module
+  success/failure. Non-git directories are silently skipped.
+- All three functions validate that the target directory exists and has a `.git`
+  folder before attempting any git operation.
+
+#### `backend/app/api/v1/endpoints/modules.py`
+- Added `POST /modules/update-azerothcore` — SSE stream of the source-tree
+  update. Reads `AC_PATH` from panel settings.
+- Added `POST /modules/{module_name}/update` — SSE stream for a single module.
+  Includes path-traversal guard.
+- Added `POST /modules/update-all` — SSE stream for all git-tracked modules.
+- All three endpoints return `text/event-stream` with the same `{"line": str}`
+  / `{"done": true}` SSE protocol used by the install and compilation endpoints.
+
+#### `frontend/src/services/api.ts`
+- Added `modulesApi.updateAzerothCore(signal?)` — `POST /modules/update-azerothcore`.
+- Added `modulesApi.updateModule(moduleName, signal?)` — `POST /modules/{name}/update`.
+- Added `modulesApi.updateAll(signal?)` — `POST /modules/update-all`.
+
+#### `frontend/src/pages/ModuleManager.tsx`
+- `LogPanel` component generalised: `moduleTitle` prop renamed to `title`;
+  header no longer hardcodes "Installing:" — callers pass the complete label.
+- Added `handleUpdate` — generic SSE stream handler shared by all three update
+  actions (AC source / single module / all modules). Mirrors the existing
+  `handleInstall` pattern.
+- **Installed tab** now contains:
+  - **AzerothCore Source** card with an **Update AzerothCore Source** button,
+    link to the Compilation page, and a brief explanation.
+  - **Update All Modules** button beside the Refresh button; disabled when no
+    git-tracked modules are installed or an update is already running.
+  - Per-module **Update** button (shown only for git-tracked modules); disabled
+    while any update is running to prevent concurrent git operations.
+- Update log output renders in the same full-screen `LogPanel` modal as install
+  output. Closing the modal invalidates the `modules-installed` query so the
+  list re-fetches fresh state.
+
+---
+
 ### Added – Panel Self-Update
 
 AzerothPanel can now update itself from the GitHub repository with a single

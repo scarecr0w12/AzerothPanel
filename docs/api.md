@@ -321,6 +321,9 @@ Response:
 | `GET` | `/catalogue` | List available modules from the AzerothCore GitHub catalogue |
 | `GET` | `/installed` | List locally installed modules |
 | `POST` | `/install` | Clone and install a module by repository slug |
+| `POST` | `/update-azerothcore` | `git pull` the AzerothCore source tree (SSE stream) |
+| `POST` | `/update-all` | `git pull` all installed git-tracked modules (SSE stream) |
+| `POST` | `/{module_name}/update` | `git pull` a single installed module (SSE stream) |
 | `DELETE` | `/{module_name}` | Remove an installed module |
 
 ---

@@ -229,6 +229,36 @@ export const modulesApi = {
 
   remove: (moduleName: string) =>
     api.delete(`/modules/${encodeURIComponent(moduleName)}`),
+
+  /** Stream git pull output for the AzerothCore source tree. */
+  updateAzerothCore: (signal?: AbortSignal) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/modules/update-azerothcore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      signal,
+    })
+  },
+
+  /** Stream git pull output for a single installed module. */
+  updateModule: (moduleName: string, signal?: AbortSignal) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch(`/api/v1/modules/${encodeURIComponent(moduleName)}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      signal,
+    })
+  },
+
+  /** Stream git pull output for all installed git-tracked modules. */
+  updateAll: (signal?: AbortSignal) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/modules/update-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      signal,
+    })
+  },
 }
 
 // ─── Config Files ─────────────────────────────────────────────────────────────

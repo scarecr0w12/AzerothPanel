@@ -1,10 +1,13 @@
 """
 Module management endpoints.
 
-GET  /modules/catalogue          – search the AzerothCore online catalogue
-GET  /modules/installed          – list locally installed modules
-POST /modules/install            – clone a module (streaming SSE)
-DELETE /modules/{module_name}    – remove a module from the modules dir
+GET    /modules/catalogue              – search the AzerothCore online catalogue
+GET    /modules/installed              – list locally installed modules
+POST   /modules/install               – clone a module (streaming SSE)
+POST   /modules/update-azerothcore    – git pull AzerothCore source (streaming SSE)
+POST   /modules/update-all            – git pull all git-tracked modules (streaming SSE)
+POST   /modules/{module_name}/update  – git pull a single module (streaming SSE)
+DELETE /modules/{module_name}         – remove a module from the modules dir
 """
 from __future__ import annotations
 
@@ -22,6 +25,9 @@ from app.services.azerothcore.module_manager import (
     list_installed_modules,
     install_module,
     remove_module,
+    update_azerothcore,
+    update_module,
+    update_all_modules,
     CATALOGUE_CATEGORIES,
 )
 
@@ -159,3 +165,93 @@ async def delete_module(
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result["message"])
     return result
+
+
+# ── Update AzerothCore source ─────────────────────────────────────────────────
+
+@router.post("/update-azerothcore")
+async def update_azerothcore_endpoint(_: dict = Depends(get_current_user)):
+    """
+    git pull --rebase the AzerothCore source tree and update submodules.
+    Returns a streaming SSE response of git output lines.
+    """
+    s = await get_settings_dict()
+    ac_path = s["AC_PATH"]
+
+    async def event_stream():
+        async for line in update_azerothcore(ac_path):
+            payload = json.dumps({"line": line})
+            yield f"data: {payload}\n\n"
+        yield 'data: {"done": true}\n\n'
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+# ── Update a single module ────────────────────────────────────────────────────
+
+@router.post("/{module_name}/update")
+async def update_module_endpoint(
+    module_name: str,
+    _: dict = Depends(get_current_user),
+):
+    """
+    git pull --rebase + submodule update for a single installed module.
+    Returns a streaming SSE response of git output lines.
+    """
+    if "/" in module_name or "\\" in module_name or module_name.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid module name.")
+
+    s = await get_settings_dict()
+    modules_path = str(Path(s["AC_PATH"]) / "modules")
+
+    async def event_stream():
+        async for line in update_module(module_name, modules_path):
+            payload = json.dumps({"line": line})
+            yield f"data: {payload}\n\n"
+        yield 'data: {"done": true}\n\n'
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+# ── Update all modules ────────────────────────────────────────────────────────
+
+@router.post("/update-all")
+async def update_all_modules_endpoint(_: dict = Depends(get_current_user)):
+    """
+    git pull --rebase for every installed module that has a .git directory.
+    Returns a streaming SSE response of git output lines.
+    """
+    s = await get_settings_dict()
+    modules_path = str(Path(s["AC_PATH"]) / "modules")
+
+    async def event_stream():
+        async for line in update_all_modules(modules_path):
+            payload = json.dumps({"line": line})
+            yield f"data: {payload}\n\n"
+        yield 'data: {"done": true}\n\n'
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

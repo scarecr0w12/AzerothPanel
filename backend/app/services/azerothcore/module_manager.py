@@ -278,3 +278,126 @@ def remove_module(module_name: str, modules_path: str) -> dict:
         return {"success": True, "message": f"Module '{module_name}' removed."}
     except Exception as exc:
         return {"success": False, "message": str(exc)}
+
+
+# ── Source / module updates ────────────────────────────────────────────────────
+
+async def update_azerothcore(ac_path: str) -> AsyncIterator[str]:
+    """
+    git pull --rebase + git submodule update for the AzerothCore source tree.
+    Streams output line-by-line.
+    """
+    base = Path(ac_path)
+    if not base.exists():
+        yield f"[error] AzerothCore source path not found: {ac_path}"
+        return
+    if not (base / ".git").exists():
+        yield f"[error] No .git directory at {ac_path} — cannot update a non-git directory."
+        return
+
+    yield f"[info] Updating AzerothCore source at {ac_path} …"
+
+    rc: list[int] = []
+    async for line in _run("git pull --rebase", cwd=ac_path, rc_out=rc):
+        yield line
+    if rc and rc[0] != 0:
+        yield f"[error] git pull exited with code {rc[0]}."
+        return
+
+    rc.clear()
+    yield "[info] Updating submodules …"
+    async for line in _run(
+        "git submodule update --init --recursive", cwd=ac_path, rc_out=rc
+    ):
+        yield line
+    if rc and rc[0] != 0:
+        yield f"[error] git submodule update exited with code {rc[0]}."
+        return
+
+    yield "[ok] AzerothCore source updated successfully."
+    yield "[done]"
+
+
+async def update_module(module_name: str, modules_path: str) -> AsyncIterator[str]:
+    """
+    git pull --rebase + submodule update for a single installed module.
+    Streams output line-by-line.
+    """
+    dest = Path(modules_path) / module_name
+    if not dest.exists():
+        yield f"[error] Module '{module_name}' not found."
+        return
+    if not (dest / ".git").exists():
+        yield f"[error] Module '{module_name}' has no .git directory — cannot update."
+        return
+
+    yield f"[info] Updating module '{module_name}' …"
+
+    rc: list[int] = []
+    async for line in _run("git pull --rebase", cwd=str(dest), rc_out=rc):
+        yield line
+    if rc and rc[0] != 0:
+        yield f"[error] git pull exited with code {rc[0]}."
+        return
+
+    rc.clear()
+    async for line in _run(
+        "git submodule update --init --recursive", cwd=str(dest), rc_out=rc
+    ):
+        yield line
+    if rc and rc[0] != 0:
+        yield f"[error] git submodule update exited with code {rc[0]}."
+        return
+
+    yield f"[ok] Module '{module_name}' updated successfully."
+    yield "[done]"
+
+
+async def update_all_modules(modules_path: str) -> AsyncIterator[str]:
+    """
+    git pull --rebase for every installed module that has a .git directory.
+    Streams output line-by-line with per-module headers.
+    """
+    base = Path(modules_path)
+    if not base.exists():
+        yield f"[error] Modules directory not found: {modules_path}"
+        return
+
+    modules = [
+        e for e in sorted(base.iterdir())
+        if e.is_dir() and (e / ".git").exists()
+    ]
+
+    if not modules:
+        yield "[info] No git-tracked modules found — nothing to update."
+        yield "[done]"
+        return
+
+    yield f"[info] Found {len(modules)} git-tracked module(s) to update."
+    failed: list[str] = []
+
+    for entry in modules:
+        yield f"\n[info] ── {entry.name} ──"
+        rc: list[int] = []
+        async for line in _run("git pull --rebase", cwd=str(entry), rc_out=rc):
+            yield line
+        if rc and rc[0] != 0:
+            yield f"[error] {entry.name}: git pull exited with code {rc[0]}."
+            failed.append(entry.name)
+            continue
+        rc.clear()
+        async for line in _run(
+            "git submodule update --init --recursive", cwd=str(entry), rc_out=rc
+        ):
+            yield line
+        if rc and rc[0] != 0:
+            yield f"[error] {entry.name}: submodule update exited with code {rc[0]}."
+            failed.append(entry.name)
+        else:
+            yield f"[ok] {entry.name} updated."
+
+    if failed:
+        yield f"\n[error] {len(failed)} module(s) failed to update: {', '.join(failed)}"
+    else:
+        yield f"\n[ok] All {len(modules)} module(s) updated successfully."
+    yield "[done]"

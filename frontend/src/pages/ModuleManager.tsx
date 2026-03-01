@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Package, Download, Trash2, Star, GitFork, Search, RefreshCw,
   CheckCircle2, XCircle, ExternalLink, ChevronLeft, ChevronRight,
-  AlertTriangle, Terminal, X, Layers, Gauge,
+  AlertTriangle, Terminal, X, Layers, Gauge, ArrowUpCircle, GitPullRequest,
 } from 'lucide-react'
 import { modulesApi } from '@/services/api'
 import { Card } from '@/components/ui/Card'
@@ -27,12 +27,12 @@ function LogPanel({
   logs,
   done,
   onClose,
-  moduleTitle,
+  title,
 }: {
   logs: string[]
   done: boolean
   onClose: () => void
-  moduleTitle: string
+  title: string
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -49,7 +49,7 @@ function LogPanel({
         <div className="flex items-center justify-between px-5 py-3 border-b border-panel-border">
           <div className="flex items-center gap-2">
             <Terminal size={16} className="text-brand" />
-            <span className="font-medium text-white text-sm">Installing: {moduleTitle}</span>
+            <span className="font-medium text-white text-sm">{title}</span>
           </div>
           <div className="flex items-center gap-2">
             {done && success && (
@@ -213,6 +213,13 @@ export default function ModuleManager() {
   const [installingName, setInstallingName] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // ── Update log state
+  const [updateLogs, setUpdateLogs] = useState<string[]>([])
+  const [updateDone, setUpdateDone] = useState(false)
+  const [updateTitle, setUpdateTitle] = useState('')
+  const [updatingName, setUpdatingName] = useState<string | null>(null) // module name, 'azerothcore', 'all'
+  const updateAbortRef = useRef<AbortController | null>(null)
+
   // ── Remove state
   const [removeError, setRemoveError] = useState<string | null>(null)
 
@@ -317,6 +324,61 @@ export default function ModuleManager() {
     }
   }, [])
 
+  // ── Generic update handler (AC source, single module, all modules)
+  const handleUpdate = useCallback(async (
+    key: string,
+    title: string,
+    fetchFn: (signal: AbortSignal) => Promise<Response>,
+  ) => {
+    setUpdateLogs([])
+    setUpdateDone(false)
+    setUpdateTitle(title)
+    setUpdatingName(key)
+
+    const ctrl = new AbortController()
+    updateAbortRef.current = ctrl
+
+    try {
+      const resp = await fetchFn(ctrl.signal)
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => `HTTP ${resp.status}`)
+        setUpdateLogs([`[error] ${txt}`])
+        setUpdateDone(true)
+        return
+      }
+
+      const reader = resp.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const parts = buf.split('\n')
+        buf = parts.pop() ?? ''
+        for (const raw of parts) {
+          if (!raw.startsWith('data: ')) continue
+          try {
+            const payload = JSON.parse(raw.slice(6))
+            if (payload.done) { setUpdateDone(true); break }
+            if (payload.line) {
+              setUpdateLogs((prev) => [...prev, payload.line as string])
+              if (payload.line === '[done]') setUpdateDone(true)
+            }
+          } catch { /* ignore bad json */ }
+        }
+      }
+    } catch (e: unknown) {
+      if ((e as { name?: string })?.name !== 'AbortError') {
+        setUpdateLogs((prev) => [...prev, `[error] ${String(e)}`])
+      }
+    } finally {
+      setUpdateDone(true)
+      setUpdatingName(null)
+    }
+  }, [])
+
   // Refresh installed + catalogue after modal close
   const handleLogClose = useCallback(() => {
     setInstallTarget(null)
@@ -335,7 +397,22 @@ export default function ModuleManager() {
           logs={installLogs}
           done={installDone}
           onClose={handleLogClose}
-          moduleTitle={installTarget.name}
+          title={`Installing: ${installTarget.name}`}
+        />
+      )}
+
+      {/* Update log modal */}
+      {(updatingName !== null || updateLogs.length > 0) && (
+        <LogPanel
+          logs={updateLogs}
+          done={updateDone}
+          onClose={() => {
+            setUpdateLogs([])
+            setUpdateDone(false)
+            setUpdateTitle('')
+            qc.invalidateQueries({ queryKey: ['modules-installed'] })
+          }}
+          title={updateTitle}
         />
       )}
 
@@ -533,7 +610,33 @@ export default function ModuleManager() {
       {/* ══ INSTALLED TAB ══════════════════════════════════════════════════ */}
       {tab === 'installed' && (
         <div className="space-y-4">
-          {/* Path */}
+          {/* ── AzerothCore source update card */}
+          <div className="bg-panel-surface border border-panel-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <GitPullRequest size={15} className="text-brand" />
+              <h3 className="text-sm font-semibold text-white">AzerothCore Source</h3>
+            </div>
+            <p className="text-xs text-panel-muted mb-4">
+              Pull the latest changes from the AzerothCore git repository.
+              After updating you will need to <Link to="/compilation" className="text-brand-light hover:underline">recompile</Link> for changes to take effect.
+            </p>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={updatingName !== null}
+              onClick={() =>
+                handleUpdate(
+                  'azerothcore',
+                  'Update AzerothCore Source',
+                  (signal) => modulesApi.updateAzerothCore(signal),
+                )
+              }
+            >
+              {updatingName === 'azerothcore'
+                ? <><RefreshCw size={13} className="animate-spin" /> Updating…</>
+                : <><ArrowUpCircle size={13} /> Update AzerothCore Source</>}
+            </Button>
+          </div>          {/* Path */}
           {installedQuery.data && (
             <p className="text-xs text-panel-muted font-mono bg-panel-surface border border-panel-border rounded-lg px-3 py-2 inline-block">
               Modules directory: {installedQuery.data.modules_path}
@@ -547,8 +650,8 @@ export default function ModuleManager() {
             </div>
           )}
 
-          {/* Refresh */}
-          <div className="flex justify-end">
+          {/* Refresh + Update All */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <Button
               size="sm"
               variant="ghost"
@@ -556,6 +659,22 @@ export default function ModuleManager() {
             >
               <RefreshCw size={13} className={installedQuery.isFetching ? 'animate-spin' : ''} />
               Refresh
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={updatingName !== null || (installedQuery.data?.modules.filter(m => m.has_git).length ?? 0) === 0}
+              onClick={() =>
+                handleUpdate(
+                  'all',
+                  'Update All Modules',
+                  (signal) => modulesApi.updateAll(signal),
+                )
+              }
+            >
+              {updatingName === 'all'
+                ? <><RefreshCw size={13} className="animate-spin" /> Updating…</>
+                : <><ArrowUpCircle size={13} /> Update All Modules</>}
             </Button>
           </div>
 
@@ -608,6 +727,24 @@ export default function ModuleManager() {
                     ) : (
                       <span className="text-xs text-gray-500 bg-panel-hover px-2 py-0.5 rounded">no git</span>
                     )}
+                    {mod.has_git && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={updatingName !== null}
+                        onClick={() =>
+                          handleUpdate(
+                            mod.name,
+                            `Update: ${mod.name}`,
+                            (signal) => modulesApi.updateModule(mod.name, signal),
+                          )
+                        }
+                      >
+                        {updatingName === mod.name
+                          ? <><RefreshCw size={13} className="animate-spin" /> Updating…</>
+                          : <><ArrowUpCircle size={13} /> Update</>}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="danger"
@@ -616,7 +753,7 @@ export default function ModuleManager() {
                           removeMutation.mutate(mod.name)
                         }
                       }}
-                      disabled={removeMutation.isPending}
+                      disabled={removeMutation.isPending || updatingName !== null}
                     >
                       <Trash2 size={13} />
                       Remove
