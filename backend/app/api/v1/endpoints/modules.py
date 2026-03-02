@@ -11,6 +11,7 @@ DELETE /modules/{module_name}         – remove a module from the modules dir
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -31,6 +32,7 @@ from app.services.azerothcore.module_manager import (
     CATALOGUE_CATEGORIES,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/modules", tags=["Modules"])
 
 
@@ -93,10 +95,14 @@ async def github_rate_limit(_: dict = Depends(get_current_user)):
 # ── Installed modules ─────────────────────────────────────────────────────────
 
 @router.get("/installed")
-async def get_installed_modules(_: dict = Depends(get_current_user)):
+async def get_installed_modules(
+    ac_path: str = Query(None, description="Override AC installation path (empty → global AC_PATH)"),
+    _: dict = Depends(get_current_user),
+):
     """List all modules currently present in the AzerothCore modules directory."""
     s = await get_settings_dict()
-    modules_path = str(Path(s["AC_PATH"]) / "modules")
+    resolved_ac_path = ac_path or s["AC_PATH"]
+    modules_path = str(Path(resolved_ac_path) / "modules")
     modules = list_installed_modules(modules_path)
     return {"modules_path": modules_path, "modules": modules}
 
@@ -111,6 +117,7 @@ class InstallModuleBody(BaseModel):
     clone_url: str
     module_name: str
     branch: str | None = None
+    ac_path: str | None = None  # override global AC_PATH
 
 
 @router.post("/install")
@@ -121,9 +128,14 @@ async def install_module_endpoint(
     """
     Clone a module repository into the AzerothCore modules directory.
     Returns a streaming SSE response of git output lines.
+
+    Pass ``ac_path`` to install into a specific AC installation rather than
+    the panel-global AC_PATH from Settings.
     """
     s = await get_settings_dict()
-    modules_path = str(Path(s["AC_PATH"]) / "modules")
+    resolved_ac_path = body.ac_path or s["AC_PATH"]
+    modules_path = str(Path(resolved_ac_path) / "modules")
+    logger.info("Installing module %r from %s into %s", body.module_name, body.clone_url, modules_path)
 
     async def event_stream():
         async for line in install_module(
@@ -152,6 +164,7 @@ async def install_module_endpoint(
 @router.delete("/{module_name}")
 async def delete_module(
     module_name: str,
+    ac_path: str = Query(None, description="Override AC installation path"),
     _: dict = Depends(get_current_user),
 ):
     """Remove a module directory from the AzerothCore modules folder."""
@@ -160,9 +173,12 @@ async def delete_module(
         raise HTTPException(status_code=400, detail="Invalid module name.")
 
     s = await get_settings_dict()
-    modules_path = str(Path(s["AC_PATH"]) / "modules")
+    resolved_ac_path = ac_path or s["AC_PATH"]
+    modules_path = str(Path(resolved_ac_path) / "modules")
+    logger.info("Removing module %r from %s", module_name, modules_path)
     result = remove_module(module_name, modules_path)
     if not result["success"]:
+        logger.warning("Remove module %r failed: %s", module_name, result.get("message"))
         raise HTTPException(status_code=404, detail=result["message"])
     return result
 
@@ -170,13 +186,18 @@ async def delete_module(
 # ── Update AzerothCore source ─────────────────────────────────────────────────
 
 @router.post("/update-azerothcore")
-async def update_azerothcore_endpoint(_: dict = Depends(get_current_user)):
+async def update_azerothcore_endpoint(
+    body: dict = {},
+    _: dict = Depends(get_current_user),
+):
     """
     git pull --rebase the AzerothCore source tree and update submodules.
     Returns a streaming SSE response of git output lines.
+
+    Pass ``{"ac_path": "/some/path"}`` to target a specific AC installation.
     """
     s = await get_settings_dict()
-    ac_path = s["AC_PATH"]
+    ac_path = (body or {}).get("ac_path") or s["AC_PATH"]
 
     async def event_stream():
         async for line in update_azerothcore(ac_path):
@@ -200,6 +221,7 @@ async def update_azerothcore_endpoint(_: dict = Depends(get_current_user)):
 @router.post("/{module_name}/update")
 async def update_module_endpoint(
     module_name: str,
+    ac_path: str = Query(None, description="Override AC installation path"),
     _: dict = Depends(get_current_user),
 ):
     """
@@ -210,7 +232,8 @@ async def update_module_endpoint(
         raise HTTPException(status_code=400, detail="Invalid module name.")
 
     s = await get_settings_dict()
-    modules_path = str(Path(s["AC_PATH"]) / "modules")
+    resolved_ac_path = ac_path or s["AC_PATH"]
+    modules_path = str(Path(resolved_ac_path) / "modules")
 
     async def event_stream():
         async for line in update_module(module_name, modules_path):
@@ -232,13 +255,19 @@ async def update_module_endpoint(
 # ── Update all modules ────────────────────────────────────────────────────────
 
 @router.post("/update-all")
-async def update_all_modules_endpoint(_: dict = Depends(get_current_user)):
+async def update_all_modules_endpoint(
+    body: dict = {},
+    _: dict = Depends(get_current_user),
+):
     """
     git pull --rebase for every installed module that has a .git directory.
     Returns a streaming SSE response of git output lines.
+
+    Pass ``{"ac_path": "/some/path"}`` to target a specific AC installation.
     """
     s = await get_settings_dict()
-    modules_path = str(Path(s["AC_PATH"]) / "modules")
+    resolved_ac_path = (body or {}).get("ac_path") or s["AC_PATH"]
+    modules_path = str(Path(resolved_ac_path) / "modules")
 
     async def event_stream():
         async for line in update_all_modules(modules_path):

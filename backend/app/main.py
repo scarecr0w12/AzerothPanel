@@ -1,9 +1,14 @@
 """
 AzerothPanel – FastAPI application entry point.
 """
+import logging
+import os
+import time
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
@@ -14,11 +19,50 @@ from app.core.database import init_panel_db, run_panel_db_migrations
 # Import ORM models so their metadata is registered with Base before init_panel_db()
 import app.models.panel_models  # noqa: F401
 
+# ---------------------------------------------------------------------------
+# Logging configuration
+# ---------------------------------------------------------------------------
+
+_LOG_DIR = Path(os.environ.get("PANEL_LOG_DIR", "/data/logs"))
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_LOG_FILE = _LOG_DIR / "panel.log"
+
+_LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s  %(message)s"
+_LOG_DATE_FMT = "%Y-%m-%d %H:%M:%S"
+
+# Root handler: stream to stdout
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATE_FMT))
+
+# Root handler: rotate at 10 MB, keep 5 files → max ~50 MB on disk
+_file_handler = RotatingFileHandler(
+    _LOG_FILE,
+    maxBytes=10 * 1024 * 1024,  # 10 MB
+    backupCount=5,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATE_FMT))
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[_stream_handler, _file_handler],
+)
+
+logger = logging.getLogger(__name__)
+logger.info("Panel log file: %s", _LOG_FILE)
+
+# Reduce noise from noisy third-party libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("AzerothPanel starting up…")
     # 1. Create / migrate panel SQLite tables
     await init_panel_db()
+    logger.info("Panel DB initialised")
     # 2. Apply incremental column migrations (safe to run on every startup)
     await run_panel_db_migrations()
     # 3. Seed any missing runtime settings with defaults
@@ -27,8 +71,9 @@ async def lifespan(app: FastAPI):
     # 4. Ensure at least one worldserver instance (the default) exists
     from app.services.azerothcore.instance_seeder import seed_default_instance
     await seed_default_instance()
+    logger.info("AzerothPanel startup complete")
     yield
-    # Shutdown: nothing to clean up currently
+    logger.info("AzerothPanel shutting down")
 
 
 app = FastAPI(
@@ -70,6 +115,21 @@ else:
 # ---------------------------------------------------------------------------
 app.include_router(api_router)
 app.include_router(ws_logs_router)  # WebSocket routes at /ws/...
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.monotonic()
+    response = await call_next(request)
+    elapsed = (time.monotonic() - start) * 1000
+    logger.info(
+        "%s %s → %s  (%.1fms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed,
+    )
+    return response
 
 
 @app.get("/health", tags=["Health"])

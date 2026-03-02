@@ -11,6 +11,7 @@ will create fresh ones (used when the user updates DB credentials).
 """
 from __future__ import annotations
 
+import logging
 from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import (
@@ -22,6 +23,8 @@ from app.core.config import settings
 
 
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 
 class Base(DeclarativeBase):
     pass
@@ -50,13 +53,36 @@ async def run_panel_db_migrations() -> None:
     (adding columns to existing tables).  Safe to call on every startup.
     """
     async with _panel_engine.begin() as conn:
-        # worldserver_instances.conf_path  (added in v1.1)
         result = await conn.execute(text("PRAGMA table_info(worldserver_instances)"))
         cols = {row[1] for row in result.fetchall()}
+
+        # v1.1 – conf_path
         if "conf_path" not in cols:
             await conn.execute(
                 text("ALTER TABLE worldserver_instances ADD COLUMN conf_path TEXT NOT NULL DEFAULT ''")
             )
+
+        # v1.2 – per-instance AC path + build path overrides
+        for col in ("ac_path", "build_path"):
+            if col not in cols:
+                await conn.execute(
+                    text(f"ALTER TABLE worldserver_instances ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+                )
+
+        # v1.2 – per-instance characters database overrides
+        for col in ("char_db_host", "char_db_port", "char_db_user",
+                    "char_db_password", "char_db_name"):
+            if col not in cols:
+                await conn.execute(
+                    text(f"ALTER TABLE worldserver_instances ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+                )
+
+        # v1.2 – per-instance SOAP overrides
+        for col in ("soap_host", "soap_port", "soap_user", "soap_password"):
+            if col not in cols:
+                await conn.execute(
+                    text(f"ALTER TABLE worldserver_instances ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+                )
 
 
 async def get_panel_db() -> AsyncIterator[AsyncSession]:
@@ -84,9 +110,11 @@ def _get_or_create_engine(url: str) -> AsyncEngine:
 
 async def clear_ac_engine_cache() -> None:
     """Dispose all cached AC engines (called when DB credentials change)."""
+    count = len(_ac_engines)
     for engine in list(_ac_engines.values()):
         await engine.dispose()
     _ac_engines.clear()
+    logger.info("AC engine cache cleared (%d engine(s) disposed)", count)
 
 
 async def get_auth_db() -> AsyncIterator[AsyncSession]:
@@ -141,3 +169,45 @@ async def get_playerbots_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def get_char_db_for_instance(instance_id: int | None) -> AsyncIterator[AsyncSession]:
+    """
+    Return a character-DB session scoped to a specific worldserver instance.
+
+    If ``instance_id`` is None, or the instance has no per-instance DB
+    credentials configured (all fields empty), falls back gracefully to the
+    global AC_CHAR_DB_* settings – so callers never need to special-case the
+    single-realm situation.
+    """
+    from app.services.panel_settings import get_settings_dict
+
+    s = await get_settings_dict()
+    host = s["AC_CHAR_DB_HOST"]
+    port = s["AC_CHAR_DB_PORT"]
+    user = s["AC_CHAR_DB_USER"]
+    password = s["AC_CHAR_DB_PASSWORD"]
+    db_name = s["AC_CHAR_DB_NAME"]
+
+    if instance_id is not None:
+        from sqlalchemy import select as sa_select
+        from app.models.panel_models import WorldServerInstance
+        async with PanelSessionLocal() as psess:
+            result = await psess.execute(
+                sa_select(WorldServerInstance).where(WorldServerInstance.id == instance_id)
+            )
+            inst = result.scalar_one_or_none()
+        if inst is not None:
+            if inst.char_db_host:
+                host = inst.char_db_host
+            if inst.char_db_port:
+                port = inst.char_db_port
+            if inst.char_db_user:
+                user = inst.char_db_user
+            if inst.char_db_password:
+                password = inst.char_db_password
+            if inst.char_db_name:
+                db_name = inst.char_db_name
+
+    url = _build_mysql_url(host, port, user, password, db_name)
+    factory = async_sessionmaker(_get_or_create_engine(url), expire_on_commit=False)
+    async with factory() as session:
+        yield session

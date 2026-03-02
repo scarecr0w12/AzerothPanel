@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -8,6 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -54,8 +56,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
+            logger.warning("JWT token missing 'sub' claim")
             raise credentials_exception
-    except JWTError:
+    except JWTError as exc:
+        logger.warning("JWT validation failed: %s", exc)
         raise credentials_exception
     return {"username": username}
 

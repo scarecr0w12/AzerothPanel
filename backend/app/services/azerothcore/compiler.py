@@ -7,11 +7,14 @@ can push each line to the browser in real time.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import shlex
 import time
 from pathlib import Path
 from typing import AsyncIterator
+
+logger = logging.getLogger(__name__)
 
 _build_lock = asyncio.Lock()
 _build_state: dict = {
@@ -71,10 +74,22 @@ async def run_build(
     build_type: str = "RelWithDebInfo",
     jobs: int = 4,
     cmake_extra: str = "",
+    ac_path_override: str | None = None,
+    build_path_override: str | None = None,
+    process_name: str | None = None,
 ) -> AsyncIterator[str]:
     """
     Generator that yields log lines while building AzerothCore.
     Must only be called once at a time (enforced by _build_lock).
+
+    ``ac_path_override`` and ``build_path_override`` allow per-instance or
+    per-build compilation by pointing at a different AC source tree or build
+    directory than the panel-wide defaults stored in panel_settings.
+
+    ``process_name`` – when set and different from "worldserver", a symlink
+    (or copy on non-symlink-capable filesystems) named ``process_name`` is
+    created in the bin directory alongside ``worldserver``.  This lets the
+    daemon and psutil identify the second server as its own unique process.
     """
     if _build_lock.locked():
         yield "[error] A build is already in progress."
@@ -83,12 +98,16 @@ async def run_build(
     async with _build_lock:
         from app.services.panel_settings import get_settings_dict
         s = await get_settings_dict()
-        ac_path = Path(s["AC_PATH"])
-        build_path = Path(s["AC_BUILD_PATH"])
+        ac_path = Path(ac_path_override) if ac_path_override else Path(s["AC_PATH"])
+        build_path = Path(build_path_override) if build_path_override else Path(s["AC_BUILD_PATH"])
         # CMAKE_INSTALL_PREFIX should be the build path, not the bin path
         # CMake will install binaries to {CMAKE_INSTALL_PREFIX}/bin
         install_prefix = str(build_path)
 
+        logger.info(
+            "Build starting: type=%s jobs=%s ac_path=%s build_path=%s process_name=%s",
+            build_type, jobs, ac_path, build_path, process_name,
+        )
         _build_state.update(
             running=True, progress=0.0, step="cmake", start_time=time.time(), error=None
         )
@@ -158,6 +177,7 @@ async def run_build(
         rc = task.result()
         if rc != 0:
             _build_state.update(running=False, error=f"cmake failed (exit {rc})")
+            logger.error("cmake failed with exit code %d", rc)
             yield f"[error] cmake exited with code {rc}"
             return
 
@@ -181,6 +201,7 @@ async def run_build(
         rc2 = task2.result()
         if rc2 != 0:
             _build_state.update(running=False, error=f"make failed (exit {rc2})")
+            logger.error("make failed with exit code %d", rc2)
             yield f"[error] make exited with code {rc2}"
             return
 
@@ -236,6 +257,28 @@ async def run_build(
         if not deployed and not skipped:
             yield "[config] No module config files found to deploy."
 
+        # ------------------------------------------------------------------
+        # Phase 5: create named symlink for multi-instance process tracking
+        # ------------------------------------------------------------------
+        if process_name and process_name != "worldserver":
+            import shutil as _shutil2
+            bin_dir = build_path / "bin"
+            src_bin = bin_dir / "worldserver"
+            dst_bin = bin_dir / process_name
+            if src_bin.exists():
+                try:
+                    if dst_bin.is_symlink() or dst_bin.exists():
+                        dst_bin.unlink()
+                    dst_bin.symlink_to(src_bin.name)  # relative symlink
+                    yield f"[install] Created symlink {dst_bin} → worldserver"
+                except OSError:
+                    # Fallback: hard copy if symlinks aren't supported
+                    _shutil2.copy2(str(src_bin), str(dst_bin))
+                    yield f"[install] Copied worldserver → {dst_bin}"
+            else:
+                yield f"[install] Warning: {src_bin} not found – skipping symlink"
+
         _build_state.update(running=False, progress=100.0, step="done", error=None)
+        logger.info("Build completed successfully: ac_path=%s", ac_path)
         yield "[done] Build completed successfully!"
 

@@ -7,6 +7,8 @@ Provides endpoints for:
 - Extracting from local client
 - Cancelling running operations
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -16,6 +18,7 @@ from app.core.security import get_current_user
 from app.services.azerothcore import data_extractor
 from app.services.panel_settings import get_settings_dict
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data-extraction", tags=["Data Extraction"])
 
 
@@ -102,6 +105,7 @@ async def download_data(
     settings = await get_settings_dict()
     data_path = req.data_path or settings.get("AC_DATA_PATH", "/opt/azerothcore/build/data")
     data_url = req.data_url or data_extractor.DATA_URL
+    logger.info("Data download requested: url=%s path=%s", data_url, data_path)
     
     async def event_generator():
         async for line in data_extractor.download_preextracted_data(data_path, data_url):
@@ -149,6 +153,11 @@ async def extract_from_client(
     client_path = req.client_path or settings.get("AC_CLIENT_PATH", boot_settings.CLIENT_PATH)
     data_path = req.data_path or settings.get("AC_DATA_PATH", f"{boot_settings.AC_PATH}/build/data")
     binary_path = req.binary_path or settings.get("AC_BINARY_PATH", f"{boot_settings.AC_PATH}/build/bin")
+    logger.info(
+        "Client extraction requested: client=%s data=%s binary=%s options=%s",
+        client_path, data_path, binary_path,
+        {k: v for k, v in {"dbc": req.extract_dbc, "maps": req.extract_maps, "vmaps": req.extract_vmaps, "mmaps": req.generate_mmaps}.items()},
+    )
     
     options = {
         "extract_dbc": req.extract_dbc,
@@ -185,5 +194,8 @@ async def cancel_extraction(_: dict = Depends(get_current_user)):
     
     Returns True if an operation was cancelled, False if no operation was running.
     """
+    logger.info("Cancel extraction requested")
     cancelled = await data_extractor.cancel_extraction()
+    if cancelled:
+        logger.info("Extraction operation cancelled")
     return {"cancelled": cancelled}

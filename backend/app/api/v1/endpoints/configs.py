@@ -11,6 +11,7 @@ rel_path is the path relative to AC_CONF_PATH, e.g.:
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +20,7 @@ from pydantic import BaseModel
 from app.core.security import get_current_user
 from app.services.panel_settings import get_settings_dict
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/configs", tags=["Configs"])
 
 _CORE_NAMES = {"worldserver.conf", "authserver.conf"}
@@ -116,4 +118,5 @@ async def save_config(
         raise HTTPException(status_code=404, detail=f"{rel_path} not found in {conf_dir}")
 
     path.write_text(body.content, encoding="utf-8")
+    logger.info("Config file updated: %s (%d bytes)", path, len(body.content))
     return {"success": True, "filename": rel_path}

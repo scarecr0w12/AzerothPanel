@@ -14,12 +14,15 @@ Data types required:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncIterator, Optional
+
+logger = logging.getLogger(__name__)
 
 # Default URL for pre-extracted data from wowgaming/client-data
 # This is the official source for AzerothCore client data
@@ -154,7 +157,7 @@ async def download_preextracted_data(
         "error": None,
         "process": None,
     }
-    
+    logger.info("Starting data download from %s to %s", data_url, data_path)
     data_dir = Path(data_path)
     data_dir.mkdir(parents=True, exist_ok=True)
     
@@ -281,13 +284,16 @@ async def download_preextracted_data(
         _extraction_state["progress_percent"] = 100
         
         if has_dbc and has_maps and has_vmaps:
+            logger.info("Data download complete: DBC=%s Maps=%s VMaps=%s MMaps=%s", has_dbc, has_maps, has_vmaps, has_mmaps)
             yield "[done] Client data download complete! You can now start the servers."
         else:
+            logger.warning("Data download finished but some data may be missing: DBC=%s Maps=%s VMaps=%s", has_dbc, has_maps, has_vmaps)
             yield "[warning] Some data may be missing. Check the extraction logs."
         
     except Exception as e:
         _extraction_state["in_progress"] = False
         _extraction_state["error"] = str(e)
+        logger.error("Data download failed: %s", e)
         yield f"[error] {str(e)}"
         
         # Clean up partial files

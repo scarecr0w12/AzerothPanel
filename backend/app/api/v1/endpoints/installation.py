@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 import json
@@ -9,6 +11,7 @@ from app.models.schemas import InstallConfig
 from app.services.azerothcore.installer import run_installation
 from app.services.panel_settings import get_settings_dict
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/installation", tags=["Installation"])
 
 
@@ -41,6 +44,7 @@ async def run_install(
     Start the automated AzerothCore installation.
     Returns a streaming response of log lines (text/event-stream).
     """
+    logger.info("Installation requested with config: %s", config.model_dump())
     config_dict = config.model_dump()
 
     async def event_stream():
@@ -77,6 +81,7 @@ async def save_worldserver_config(body: dict, _: dict = Depends(get_current_user
     path = Path(s["AC_WORLDSERVER_CONF"])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body.get("content", ""), encoding="utf-8")
+    logger.info("Saved worldserver.conf to %s (%d bytes)", path, len(body.get("content", "")))
     return {"success": True}
 
 
@@ -97,5 +102,6 @@ async def save_authserver_config(body: dict, _: dict = Depends(get_current_user)
     path = Path(s["AC_AUTHSERVER_CONF"])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body.get("content", ""), encoding="utf-8")
+    logger.info("Saved authserver.conf to %s (%d bytes)", path, len(body.get("content", "")))
     return {"success": True}
 

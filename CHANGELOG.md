@@ -5,7 +5,199 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] – 2026-03-01
+## [Unreleased] – 2026-03-02
+
+### Summary
+
+| Area | Change |
+|---|---|
+| **Per-instance overrides** | Every worldserver instance can now define its own AC source path, build path, characters database credentials and SOAP credentials — seamless multi-realm support without touching global settings |
+| **Structured application logging** | All backend modules now emit structured log lines to stdout **and** a rotating file at `<PANEL_LOG_DIR>/panel.log` (default `/data/logs/panel.log`) |
+| **Instance-scoped operations** | Compilation, module management, database manager, log viewer and player management pages all show an instance selector when more than one instance exists; every API call passes `instance_id` or `ac_path` accordingly |
+| **Named binary symlink** | When compiling for a specific instance (`process_name` supplied), the build step creates a `worldserver-<name>` symlink in the bin directory so the daemon can uniquely track each process |
+| **Docker volume** | `panel_data` named volume replaced with a host-mounted `./data` directory so the SQLite DB and application logs are directly accessible on the host |
+| **WebSocket URL fix** | `useWebSocket` now correctly appends `?token=…` vs `&token=…` based on whether the path already contains a query string |
+| **HTTP request middleware** | New FastAPI middleware logs every request with method, path, status code and elapsed milliseconds |
+
+---
+
+### Added – Per-Instance Overrides (Multi-Realm Support)
+
+Each `WorldServerInstance` can now carry its own credential/path overrides
+that take precedence over the global panel Settings for all operations
+that touch that instance.  Empty values silently fall back to the
+global configuration, so single-realm setups require zero changes.
+
+#### Backend — data model
+
+##### `backend/app/models/panel_models.py`
+- New columns on `WorldServerInstance` (all `Text`, default `""`):
+  - `ac_path`, `build_path` — per-instance AzerothCore source and build directories.
+  - `char_db_host`, `char_db_port`, `char_db_user`, `char_db_password`, `char_db_name` — per-instance characters database.
+  - `soap_host`, `soap_port`, `soap_user`, `soap_password` — per-instance SOAP endpoint.
+
+##### `backend/app/core/database.py`
+- `run_panel_db_migrations()` extended to ADD the 11 new columns (v1.2 block)
+  to existing databases — safe to run on every startup.
+- New `get_char_db_for_instance(instance_id)` async generator: looks up the
+  instance's `char_db_*` overrides and returns a session to the correct database.
+  Falls back to global `AC_CHAR_DB_*` settings when no overrides are set.
+
+##### `backend/app/models/schemas.py`
+- `WorldServerInstanceSchema`, `WorldServerInstanceCreate`, `WorldServerInstanceUpdate`
+  all extended with the 11 new optional override fields.
+- `SqlQueryRequest.instance_id` — scopes the characters DB session.
+- `BuildConfig`: added `ac_path`, `build_path`, `process_name` optional fields.
+
+#### Backend — API changes
+
+##### `backend/app/api/v1/endpoints/instances.py`
+- `_enrich()` now includes all 11 override fields in the serialised response.
+- `create_instance` and `update_instance` persist the override fields.
+- `instance_command` — routes via `execute_command_for_instance` when
+  `soap_user`/`soap_password` are set on the instance; otherwise falls back to
+  daemon stdin.
+
+##### `backend/app/api/v1/endpoints/database.py`
+- Added `_db_session(database, instance_id)` async context manager — central
+  routing helper that picks the right session factory per database type.
+- All endpoints (`/tables`, `/query`, `/table`, `/backup`) now accept
+  `instance_id` query parameter (or request-body field for POST endpoints).
+- `/backup` resolves per-instance `char_db_*` credentials when `instance_id`
+  is supplied, and now correctly uses `AC_WORLD_DB_*` credentials (previously
+  all non-auth databases incorrectly used `AC_AUTH_DB_*`).
+
+##### `backend/app/api/v1/endpoints/players.py`
+- `GET /players/characters` and `GET /players/characters/{guid}` accept
+  `instance_id` query parameter; routes via `get_char_db_for_instance`.
+- Switched import from removed `get_char_db` to `get_char_db_for_instance`.
+
+##### `backend/app/api/v1/endpoints/logs.py`
+- `/sources`, `/{source}`, `/{source}/size`, `/{source}/download` all accept
+  `instance_id` query parameter and forward it to the log manager.
+
+##### `backend/app/api/v1/endpoints/modules.py`
+- `GET /modules/installed`, `POST /modules/install`, `DELETE /modules/{name}`,
+  `POST /modules/{name}/update`, `POST /modules/update-all`,
+  `POST /modules/update-azerothcore` all accept an `ac_path` override (query
+  param or request-body field) to target a specific AC installation.
+
+##### `backend/app/api/v1/endpoints/compilation.py`
+- `POST /compilation/build` forwards `ac_path_override`, `build_path_override`,
+  and `process_name` to `run_build`.
+
+##### `backend/app/services/azerothcore/compiler.py`
+- `run_build()` accepts `ac_path_override`, `build_path_override`, `process_name`.
+- **Phase 5** (new): after a successful build, when `process_name` is set and
+  differs from `"worldserver"`, creates a relative symlink
+  `bin/<process_name> → worldserver` (falls back to `shutil.copy2` if symlinks
+  are unsupported).
+
+##### `backend/app/services/azerothcore/soap_client.py`
+- New `execute_command_for_instance(command, instance_id)` — resolves
+  per-instance SOAP overrides before sending the command; falls back to global
+  settings gracefully.
+
+#### Frontend
+
+##### `frontend/src/types/index.ts`
+- `WorldServerInstance`, `WorldServerInstanceCreate`, `WorldServerInstanceUpdate`
+  extended with 11 override fields.
+- New `BuildConfig` interface with `ac_path`, `build_path`, `process_name`.
+
+##### `frontend/src/services/api.ts`
+- `logsApi` — all functions accept optional `instanceId`.
+- `playersApi.characters` and `.character` accept optional `instanceId`.
+- `dbApi.tables`, `.query`, `.browse`, `.backup` accept optional `instance_id`.
+- `compileApi.build` accepts optional `acPath`, `buildPath`, `processName`.
+- `modulesApi.installed`, `.install`, `.remove`, `.updateAzerothCore`,
+  `.updateModule`, `.updateAll` accept optional `acPath`.
+- `instancesApi` CRUD methods pass all new override fields.
+
+##### `frontend/src/pages/ServerControl.tsx`
+- `InstanceModal` — new *Per-Instance Overrides* collapsible section with
+  fields for `ac_path`, `build_path`, characters DB, and SOAP credentials.
+  Collapsed by default; toggle with `ChevronDown`/`ChevronUp`.
+
+##### `frontend/src/pages/Compilation.tsx`
+- Instance selector (hidden when only one instance) targets the build at a
+  specific instance's `ac_path` / `build_path` / `process_name`.
+
+##### `frontend/src/pages/DatabaseManager.tsx`
+- Instance selector (characters DB only; hidden when one instance) routes all
+  DB queries/browsing/backup to the selected instance's character database.
+
+##### `frontend/src/pages/LogViewer.tsx`
+- Instance selector routes log tail, search, download, and live WebSocket
+  stream to the selected instance's log directory.
+
+##### `frontend/src/pages/ModuleManager.tsx`
+- Instance selector routes installed list, install, remove, and all update
+  operations to the selected instance's AC installation path.
+
+##### `frontend/src/pages/PlayerManagement.tsx`
+- Instance selector on the characters tab routes character queries to the
+  selected instance's character database.
+
+---
+
+### Added – Structured Application Logging
+
+##### `backend/app/main.py`
+- `logging.basicConfig` configured at startup with two handlers:
+  - **Stream** (`sys.stdout`) — for Docker container log capture.
+  - **RotatingFileHandler** — writes to `$PANEL_LOG_DIR/panel.log` (default
+    `/data/logs/panel.log`); rotates at 10 MB, keeps 5 files (≤ 50 MB total).
+- Log format: `YYYY-MM-DD HH:MM:SS [module] LEVEL  message`.
+- Noisy third-party libraries (`httpx`, `httpcore`, `uvicorn.access`) set to
+  `WARNING` to reduce noise.
+- New HTTP middleware logs every request: `METHOD /path → STATUS (ms)`.
+
+Every backend module now uses `logger = logging.getLogger(__name__)` and logs:
+- Notable user actions (login, start/stop, ban, kick, modify, config save …).
+- Every compilation, installation, and build start/completion.
+- Errors and warnings from SOAP, database, and external processes.
+- JWT validation failures and authentication events.
+- Settings updates (sensitive values redacted).
+
+---
+
+### Changed
+
+#### `docker-compose.yml`
+- `panel_data` named Docker volume replaced with **`./data` host-mount**.
+  The SQLite database and application logs are now written to `./data/` in
+  the project directory — directly accessible on the host without `docker exec`.
+- `volumes:` top-level section: `panel_data:` entry removed.
+
+#### `frontend/src/hooks/useWebSocket.ts`
+- Fixed URL construction: `?token=…` is now appended with `?` or `&`
+  depending on whether the path already contains a query string (needed by
+  `LogViewer` when passing `instance_id` in the WS path).
+
+---
+
+### Fixed
+
+#### `backend/app/api/v1/endpoints/database.py`
+- Backup endpoint previously used `AC_AUTH_DB_*` credentials for the  
+  `characters` and `world` databases, causing backup failures when those
+  databases live on different hosts or use different credentials.  Each
+  database now correctly uses its own `AC_*_DB_*` settings.
+
+#### `backend/app/api/v1/endpoints/instances.py`
+- `generate-config` endpoint now sets a unique `LogsDir` in the generated
+  `worldserver.conf` (per-instance subdirectory under the logs root) so
+  worldserver log files from different instances do not overwrite each other.
+- `generate-config` auto-populates `binary_path` and `working_dir` on the
+  instance when the AC binary path is known, removing the manual step of
+  setting these fields after config generation.
+- `RealmName` key now applied via the config patch dict (was previously not
+  included in overrides).
+
+---
+
+## [1.3.0] – 2026-03-01
 
 ### Summary of changes in this release
 

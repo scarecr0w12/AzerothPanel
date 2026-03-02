@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Hammer, StopCircle, RotateCcw, GitPullRequest, ArrowUpCircle, ChevronDown, ChevronUp } from 'lucide-react'
-import { compileApi, modulesApi } from '@/services/api'
+import { compileApi, modulesApi, instancesApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import type { BuildStatus } from '@/types'
+import type { BuildStatus, WorldServerInstance } from '@/types'
 
 const BUILD_TYPES = ['Release', 'RelWithDebInfo', 'Debug']
 
@@ -40,6 +40,15 @@ export default function Compilation() {
     refetchInterval: building ? 2000 : false,
   })
 
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>()
+  const instancesQuery = useQuery({
+    queryKey: ['worldserver-instances'],
+    queryFn: () => instancesApi.list().then((r) => r.data.instances as WorldServerInstance[]),
+    staleTime: 30_000,
+  })
+  const instances = instancesQuery.data ?? []
+  const selectedInstance = instances.find(i => i.id === selectedInstanceId)
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
@@ -58,7 +67,7 @@ export default function Compilation() {
     updateAbortRef.current = ctrl
 
     try {
-      const resp = await modulesApi.updateAzerothCore(ctrl.signal)
+      const resp = await modulesApi.updateAzerothCore(ctrl.signal, selectedInstance?.ac_path || undefined)
       if (!resp.ok) {
         const txt = await resp.text().catch(() => `HTTP ${resp.status}`)
         setUpdateLogs([`[error] ${txt}`])
@@ -109,7 +118,12 @@ export default function Compilation() {
     abortRef.current = controller
 
     try {
-      const response = await compileApi.build(buildType, jobs, cmakeExtra, controller.signal)
+      const response = await compileApi.build(
+        buildType, jobs, cmakeExtra, controller.signal,
+        selectedInstance?.ac_path || undefined,
+        selectedInstance?.build_path || undefined,
+        selectedInstance?.process_name || undefined,
+      )
       if (!response.ok) {
         const text = await response.text().catch(() => `HTTP ${response.status}`)
         setError(text)
@@ -232,6 +246,21 @@ export default function Compilation() {
       {/* Config card */}
       <Card>
         <CardHeader title="Build Configuration" subtitle="Configure and start a new compilation" />
+        {instances.length > 1 && (
+          <div className="mb-5 flex items-center gap-3">
+            <label className="text-xs text-panel-muted whitespace-nowrap">Target Instance</label>
+            <select
+              value={selectedInstanceId ?? ''}
+              onChange={e => setSelectedInstanceId(e.target.value === '' ? undefined : Number(e.target.value))}
+              className="bg-panel-bg border border-panel-border rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-brand"
+            >
+              <option value="">Global (AC_PATH / AC_BUILD_PATH)</option>
+              {instances.map(i => (
+                <option key={i.id} value={i.id}>{i.display_name}{i.ac_path ? ` — ${i.ac_path}` : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-3">
             <label className="text-xs font-medium text-panel-muted uppercase tracking-wide">Build Type</label>

@@ -6,10 +6,10 @@ import {
   CheckCircle2, XCircle, ExternalLink, ChevronLeft, ChevronRight,
   AlertTriangle, Terminal, X, Layers, Gauge, ArrowUpCircle,
 } from 'lucide-react'
-import { modulesApi } from '@/services/api'
+import { modulesApi, instancesApi } from '@/services/api'
 import { Card } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import type { CatalogueModule, CatalogueResponse, InstalledModule } from '@/types'
+import type { CatalogueModule, CatalogueResponse, InstalledModule, WorldServerInstance } from '@/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -199,6 +199,16 @@ type Tab = 'catalogue' | 'installed'
 export default function ModuleManager() {
   const qc = useQueryClient()
 
+  // ── Instance selector
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>()
+  const instancesQuery = useQuery({
+    queryKey: ['worldserver-instances'],
+    queryFn: () => instancesApi.list().then((r) => r.data.instances as WorldServerInstance[]),
+    staleTime: 30_000,
+  })
+  const instances = instancesQuery.data ?? []
+  const selectedAcPath = instances.find(i => i.id === selectedInstanceId)?.ac_path || undefined
+
   // ── Tab / catalogue state
   const [tab, setTab] = useState<Tab>('catalogue')
   const [category, setCategory] = useState('modules')
@@ -233,8 +243,8 @@ export default function ModuleManager() {
 
   // ── Installed query
   const installedQuery = useQuery<{ modules_path: string; modules: InstalledModule[] }>({
-    queryKey: ['modules-installed'],
-    queryFn: () => modulesApi.installed().then((r) => r.data),
+    queryKey: ['modules-installed', selectedAcPath],
+    queryFn: () => modulesApi.installed(selectedAcPath).then((r) => r.data),
   })
 
   // ── Rate-limit query (background, used for status badge)
@@ -248,7 +258,7 @@ export default function ModuleManager() {
 
   // ── Remove mutation
   const removeMutation = useMutation({
-    mutationFn: (name: string) => modulesApi.remove(name),
+    mutationFn: (name: string) => modulesApi.remove(name, selectedAcPath),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['modules-installed'] })
       qc.invalidateQueries({ queryKey: ['modules-catalogue'] })
@@ -281,7 +291,7 @@ export default function ModuleManager() {
     abortRef.current = ctrl
 
     try {
-      const resp = await modulesApi.install(mod.clone_url, mod.name, undefined, ctrl.signal)
+      const resp = await modulesApi.install(mod.clone_url, mod.name, undefined, ctrl.signal, selectedAcPath)
       if (!resp.ok) {
         const txt = await resp.text().catch(() => `HTTP ${resp.status}`)
         setInstallLogs([`[error] ${txt}`])
@@ -414,6 +424,23 @@ export default function ModuleManager() {
           }}
           title={updateTitle}
         />
+      )}
+
+      {/* Instance selector */}
+      {instances.length > 1 && (
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-panel-muted whitespace-nowrap">AC Installation</label>
+          <select
+            value={selectedInstanceId ?? ''}
+            onChange={e => setSelectedInstanceId(e.target.value === '' ? undefined : Number(e.target.value))}
+            className="bg-panel-bg border border-panel-border rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-brand"
+          >
+            <option value="">Global (AC_PATH)</option>
+            {instances.map(i => (
+              <option key={i.id} value={i.id}>{i.display_name}{i.ac_path ? ` — ${i.ac_path}` : ''}</option>
+            ))}
+          </select>
+        </div>
       )}
 
       {/* Rate-limit badge + recompile notice */}
@@ -642,7 +669,7 @@ export default function ModuleManager() {
                 handleUpdate(
                   'all',
                   'Update All Modules',
-                  (signal) => modulesApi.updateAll(signal),
+                  (signal) => modulesApi.updateAll(signal, selectedAcPath),
                 )
               }
             >
@@ -710,7 +737,7 @@ export default function ModuleManager() {
                           handleUpdate(
                             mod.name,
                             `Update: ${mod.name}`,
-                            (signal) => modulesApi.updateModule(mod.name, signal),
+                            (signal) => modulesApi.updateModule(mod.name, signal, selectedAcPath),
                           )
                         }
                       >

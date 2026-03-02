@@ -30,6 +30,12 @@ class WorldServerInstance(Base):
 
     ``binary_path`` and ``working_dir`` are absolute paths.  When left
     empty the panel falls back to the global AC_BINARY_PATH setting.
+
+    Per-instance overrides (all default to "" meaning "use global setting"):
+    - ``ac_path``       – AzerothCore installation root; drives compilation
+                          and module management for this instance.
+    - ``char_db_*``     – Characters database credentials.
+    - ``soap_*``        – SOAP credentials for in-game GM commands.
     """
     __tablename__ = "worldserver_instances"
 
@@ -41,6 +47,24 @@ class WorldServerInstance(Base):
     conf_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Per-instance AzerothCore source/build path overrides
+    # (empty string → fall back to global AC_PATH / AC_BUILD_PATH settings)
+    ac_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    build_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+
+    # Per-instance characters database (empty → use global AC_CHAR_DB_* settings)
+    char_db_host: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    char_db_port: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    char_db_user: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    char_db_password: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    char_db_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+
+    # Per-instance SOAP credentials (empty → use global AC_SOAP_* settings)
+    soap_host: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    soap_port: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    soap_user: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    soap_password: Mapped[str] = mapped_column(String(256), nullable=False, default="")
 
     def __repr__(self) -> str:
         return f"<WorldServerInstance id={self.id} name={self.display_name!r} proc={self.process_name!r}>"

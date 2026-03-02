@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Search, Ban, LogOut, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
-import { playersApi } from '@/services/api'
+import { playersApi, instancesApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { RACE_NAMES, CLASS_NAMES, CLASS_COLORS, ZONE_NAMES } from '@/types'
-import type { Account, Character } from '@/types'
+import type { Account, Character, WorldServerInstance } from '@/types'
 
 type Tab = 'accounts' | 'characters'
 
@@ -13,15 +13,23 @@ export default function PlayerManagement() {
   const [tab, setTab] = useState<Tab>('characters')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [instanceId, setInstanceId] = useState<number | undefined>()
   const [banTarget, setBanTarget] = useState<Account | null>(null)
   const [banDuration, setBanDuration] = useState('1d')
   const [banReason, setBanReason] = useState('')
   const [announceMsg, setAnnounceMsg] = useState('')
   const qc = useQueryClient()
 
+  const instancesQuery = useQuery({
+    queryKey: ['worldserver-instances'],
+    queryFn: () => instancesApi.list().then((r) => r.data.instances as WorldServerInstance[]),
+    staleTime: 30_000,
+  })
+  const instances = instancesQuery.data ?? []
+
   const charQuery = useQuery({
-    queryKey: ['characters', search, page],
-    queryFn: () => playersApi.characters(search || undefined, false, page).then((r) => r.data),
+    queryKey: ['characters', search, page, instanceId],
+    queryFn: () => playersApi.characters(search || undefined, false, page, instanceId).then((r) => r.data),
     enabled: tab === 'characters',
   })
 
@@ -69,6 +77,18 @@ export default function PlayerManagement() {
               placeholder={`Search ${tab}…`}
               className="bg-transparent text-sm text-white placeholder-panel-muted outline-none flex-1" />
           </div>
+          {tab === 'characters' && instances.length > 1 && (
+            <select
+              value={instanceId ?? ''}
+              onChange={e => { setInstanceId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(1) }}
+              className="bg-panel-bg border border-panel-border rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-brand"
+            >
+              <option value="">All Instances</option>
+              {instances.map(i => (
+                <option key={i.id} value={i.id}>{i.display_name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </Card>
 

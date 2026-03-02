@@ -34,6 +34,20 @@ export interface WorldServerInstance {
   conf_path: string
   notes: string
   sort_order: number
+  // Per-instance AC installation overrides (empty = use global)
+  ac_path: string
+  build_path: string
+  // Per-instance characters DB overrides (empty = use global)
+  char_db_host: string
+  char_db_port: string
+  char_db_user: string
+  char_db_password: string
+  char_db_name: string
+  // Per-instance SOAP overrides (empty = use global)
+  soap_host: string
+  soap_port: string
+  soap_user: string
+  soap_password: string
   status?: ProcessStatus
 }
 
@@ -45,6 +59,17 @@ export interface WorldServerInstanceCreate {
   conf_path?: string
   notes?: string
   sort_order?: number
+  ac_path?: string
+  build_path?: string
+  char_db_host?: string
+  char_db_port?: string
+  char_db_user?: string
+  char_db_password?: string
+  char_db_name?: string
+  soap_host?: string
+  soap_port?: string
+  soap_user?: string
+  soap_password?: string
 }
 
 export interface WorldServerInstanceUpdate {
@@ -54,6 +79,17 @@ export interface WorldServerInstanceUpdate {
   conf_path?: string
   notes?: string
   sort_order?: number
+  ac_path?: string
+  build_path?: string
+  char_db_host?: string
+  char_db_port?: string
+  char_db_user?: string
+  char_db_password?: string
+  char_db_name?: string
+  soap_host?: string
+  soap_port?: string
+  soap_user?: string
+  soap_password?: string
 }
 
 export interface WorldServerProvisionRequest {
@@ -168,6 +204,16 @@ export interface QueryResult {
 }
 
 // ─── Build ───────────────────────────────────────────────────────────────────
+export interface BuildConfig {
+  build_type?: string
+  jobs?: number
+  cmake_extra?: string
+  /** Override the global AC_PATH for this build (empty/undefined → global) */
+  ac_path?: string
+  /** Override the global AC_BUILD_PATH for this build (empty/undefined → global) */
+  build_path?: string
+}
+
 export interface BuildStatus {
   running: boolean
   progress_percent?: number

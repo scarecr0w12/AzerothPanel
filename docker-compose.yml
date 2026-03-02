@@ -28,8 +28,8 @@ services:
       # Set this to the path of your WoW 3.3.5a client on the host machine.
       # Mounted as rw so extraction tools can write output files.
       - ${CLIENT_PATH:-/root/clientdata}:${CLIENT_PATH:-/root/clientdata}:rw
-      # Persist the panel SQLite database across restarts
-      - panel_data:/data
+      # Persist the panel SQLite database and application logs on the host
+      - ./data:/data
       # MySQL UNIX socket — required so the installer can reach MySQL as root
       # via auth_socket (TCP connections are rejected by auth_socket on Debian/Ubuntu).
       - /var/run/mysqld:/var/run/mysqld:ro
@@ -59,6 +59,5 @@ services:
       - backend
 
 volumes:
-  panel_data:
   pip_cache:
 

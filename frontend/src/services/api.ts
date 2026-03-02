@@ -70,11 +70,16 @@ export const instancesApi = {
 
 // ─── Logs ────────────────────────────────────────────────────────────────────
 export const logsApi = {
-  sources: () => api.get('/logs/sources'),
-  tail: (source: string, lines = 500) => api.get(`/logs/${source}`, { params: { lines } }),
-  search: (source: string, search: string, level?: string) =>
-    api.get(`/logs/${source}`, { params: { search, level } }),
-  download: (source: string) => `/api/v1/logs/${source}/download`,
+  sources: (instanceId?: number) =>
+    api.get('/logs/sources', { params: instanceId != null ? { instance_id: instanceId } : {} }),
+  tail: (source: string, lines = 500, instanceId?: number) =>
+    api.get(`/logs/${source}`, { params: { lines, ...(instanceId != null ? { instance_id: instanceId } : {}) } }),
+  search: (source: string, search: string, level?: string, instanceId?: number) =>
+    api.get(`/logs/${source}`, { params: { search, level, ...(instanceId != null ? { instance_id: instanceId } : {}) } }),
+  download: (source: string, instanceId?: number) =>
+    instanceId != null
+      ? `/api/v1/logs/${source}/download?instance_id=${instanceId}`
+      : `/api/v1/logs/${source}/download`,
 }
 
 // ─── Players ─────────────────────────────────────────────────────────────────
@@ -82,9 +87,10 @@ export const playersApi = {
   online: () => api.get('/players/online'),
   accounts: (search?: string, page = 1) =>
     api.get('/players/accounts', { params: { search, page } }),
-  characters: (search?: string, onlineOnly = false, page = 1) =>
-    api.get('/players/characters', { params: { search, online_only: onlineOnly, page } }),
-  character: (guid: number) => api.get(`/players/characters/${guid}`),
+  characters: (search?: string, onlineOnly = false, page = 1, instanceId?: number) =>
+    api.get('/players/characters', { params: { search, online_only: onlineOnly, page, ...(instanceId != null ? { instance_id: instanceId } : {}) } }),
+  character: (guid: number, instanceId?: number) =>
+    api.get(`/players/characters/${guid}`, { params: instanceId != null ? { instance_id: instanceId } : {} }),
   ban: (account_id: number, duration: string, reason: string) =>
     api.post('/players/ban', { account_id, duration, reason }),
   unban: (account_id: number) => api.post(`/players/unban/${account_id}`),
@@ -99,13 +105,18 @@ export const playersApi = {
 export const dbApi = {
   available: () => api.get<{ databases: string[] }>('/database/available'),
 
-  tables: (database: string) => api.get(`/database/tables/${database}`),
+  /**
+   * ``instance_id`` scopes the ``characters`` database to the credentials
+   * configured on that worldserver instance (falls back to global if unset).
+   */
+  tables: (database: string, instance_id?: number) =>
+    api.get(`/database/tables/${database}`, { params: instance_id != null ? { instance_id } : {} }),
 
   schema: (database: string, table: string) =>
     api.get(`/database/schema/${database}/${table}`),
 
-  query: (database: string, query: string, max_rows = 500) =>
-    api.post('/database/query', { database, query, max_rows }),
+  query: (database: string, query: string, max_rows = 500, instance_id?: number) =>
+    api.post('/database/query', { database, query, max_rows, ...(instance_id != null ? { instance_id } : {}) }),
 
   browse: (
     database: string,
@@ -114,9 +125,10 @@ export const dbApi = {
     order_by?: string,
     order_dir: 'asc' | 'desc' = 'asc',
     filters?: string,
+    instance_id?: number,
   ) =>
     api.get(`/database/table/${database}/${table}`, {
-      params: { page, order_by, order_dir, filters },
+      params: { page, order_by, order_dir, filters, ...(instance_id != null ? { instance_id } : {}) },
     }),
 
   insertRow: (database: string, table: string, data: Record<string, unknown>) =>
@@ -138,8 +150,8 @@ export const dbApi = {
   export: (database: string, query: string, format: 'csv' | 'json', max_rows = 100_000) =>
     api.post('/database/export', { database, query, format, max_rows }, { responseType: 'blob' }),
 
-  backup: (database: string) =>
-    api.post('/database/backup', null, { params: { database } }),
+  backup: (database: string, instance_id?: number) =>
+    api.post('/database/backup', null, { params: { database, ...(instance_id != null ? { instance_id } : {}) } }),
 }
 
 // ─── Installation ─────────────────────────────────────────────────────────────
@@ -165,6 +177,9 @@ export const compileApi = {
     jobs: number,
     cmakeExtra: string,
     signal?: AbortSignal,
+    acPath?: string,
+    buildPath?: string,
+    processName?: string,
   ) => {
     const token = localStorage.getItem('ap_token') ?? ''
     return fetch('/api/v1/compilation/build', {
@@ -173,7 +188,14 @@ export const compileApi = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ build_type: buildType, jobs, cmake_extra: cmakeExtra }),
+      body: JSON.stringify({
+        build_type: buildType,
+        jobs,
+        cmake_extra: cmakeExtra,
+        ...(acPath ? { ac_path: acPath } : {}),
+        ...(buildPath ? { build_path: buildPath } : {}),
+        ...(processName ? { process_name: processName } : {}),
+      }),
       signal,
     })
   },
@@ -228,14 +250,17 @@ export const modulesApi = {
   catalogue: (category = 'modules', page = 1, perPage = 30) =>
     api.get('/modules/catalogue', { params: { category, page, per_page: perPage } }),
 
-  installed: () => api.get('/modules/installed'),
+  /** ``acPath`` targets a specific AC installation instead of the panel-global AC_PATH. */
+  installed: (acPath?: string) =>
+    api.get('/modules/installed', { params: acPath ? { ac_path: acPath } : {} }),
 
   rateLimit: () => api.get('/modules/github/rate-limit'),
 
   /**
    * Stream git clone output as SSE.
+   * ``acPath`` installs into a specific AC installation's modules directory.
    */
-  install: (clone_url: string, module_name: string, branch?: string, signal?: AbortSignal) => {
+  install: (clone_url: string, module_name: string, branch?: string, signal?: AbortSignal, acPath?: string) => {
     const token = localStorage.getItem('ap_token') ?? ''
     return fetch('/api/v1/modules/install', {
       method: 'POST',
@@ -243,28 +268,36 @@ export const modulesApi = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ clone_url, module_name, branch: branch ?? null }),
+      body: JSON.stringify({
+        clone_url, module_name,
+        branch: branch ?? null,
+        ...(acPath ? { ac_path: acPath } : {}),
+      }),
       signal,
     })
   },
 
-  remove: (moduleName: string) =>
-    api.delete(`/modules/${encodeURIComponent(moduleName)}`),
+  remove: (moduleName: string, acPath?: string) =>
+    api.delete(`/modules/${encodeURIComponent(moduleName)}`, {
+      params: acPath ? { ac_path: acPath } : {},
+    }),
 
   /** Stream git pull output for the AzerothCore source tree. */
-  updateAzerothCore: (signal?: AbortSignal) => {
+  updateAzerothCore: (signal?: AbortSignal, acPath?: string) => {
     const token = localStorage.getItem('ap_token') ?? ''
     return fetch('/api/v1/modules/update-azerothcore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: acPath ? JSON.stringify({ ac_path: acPath }) : undefined,
       signal,
     })
   },
 
   /** Stream git pull output for a single installed module. */
-  updateModule: (moduleName: string, signal?: AbortSignal) => {
+  updateModule: (moduleName: string, signal?: AbortSignal, acPath?: string) => {
     const token = localStorage.getItem('ap_token') ?? ''
-    return fetch(`/api/v1/modules/${encodeURIComponent(moduleName)}/update`, {
+    const params = acPath ? `?ac_path=${encodeURIComponent(acPath)}` : ''
+    return fetch(`/api/v1/modules/${encodeURIComponent(moduleName)}/update${params}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       signal,
@@ -272,11 +305,12 @@ export const modulesApi = {
   },
 
   /** Stream git pull output for all installed git-tracked modules. */
-  updateAll: (signal?: AbortSignal) => {
+  updateAll: (signal?: AbortSignal, acPath?: string) => {
     const token = localStorage.getItem('ap_token') ?? ''
     return fetch('/api/v1/modules/update-all', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: acPath ? JSON.stringify({ ac_path: acPath }) : undefined,
       signal,
     })
   },

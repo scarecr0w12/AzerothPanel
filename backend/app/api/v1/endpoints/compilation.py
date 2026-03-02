@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 import json
@@ -6,6 +8,7 @@ from app.core.security import get_current_user
 from app.models.schemas import BuildConfig, BuildStatusResponse
 from app.services.azerothcore.compiler import run_build, get_build_status
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/compilation", tags=["Compilation"])
 
 
@@ -30,12 +33,22 @@ async def start_build(
     """
     Start a build of AzerothCore.
     Returns a streaming Server-Sent Events (SSE) response of build log lines.
+
+    Pass ``ac_path`` and/or ``build_path`` to compile a specific AC installation
+    rather than the panel-global paths from Settings.
     """
+    logger.info(
+        "Build requested: type=%s jobs=%s cmake_extra=%r process_name=%s",
+        config.build_type, config.jobs, config.cmake_extra, config.process_name,
+    )
     async def event_stream():
         async for line in run_build(
             build_type=config.build_type,
             jobs=config.jobs,
             cmake_extra=config.cmake_extra,
+            ac_path_override=config.ac_path or None,
+            build_path_override=config.build_path or None,
+            process_name=config.process_name or None,
         ):
             payload = json.dumps({"line": line})
             yield f"data: {payload}\n\n"

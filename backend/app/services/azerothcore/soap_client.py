@@ -11,7 +11,11 @@ Required worldserver.conf settings:
 """
 from __future__ import annotations
 
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _SOAP_ENVELOPE = """<?xml version="1.0" encoding="UTF-8"?>
 <SOAP-ENV:Envelope
@@ -41,7 +45,7 @@ def _parse_response(xml: str) -> str:
 
 async def execute_command(command: str) -> tuple[bool, str]:
     """
-    Send a GM command to the worldserver via SOAP.
+    Send a GM command to the worldserver via SOAP using global settings.
     Returns (success, result_text).
     """
     from app.services.panel_settings import get_settings_dict
@@ -51,10 +55,12 @@ async def execute_command(command: str) -> tuple[bool, str]:
     soap_password = s["AC_SOAP_PASSWORD"]
 
     if not soap_user or not soap_password:
+        logger.warning("SOAP command skipped: credentials not configured")
         return False, "SOAP credentials not configured (set AC_SOAP_USER / AC_SOAP_PASSWORD in Settings)"
 
     url = f"http://{s['AC_SOAP_HOST']}:{s['AC_SOAP_PORT']}/"
     body = _SOAP_ENVELOPE.format(command=command)
+    logger.debug("SOAP command to %s: %r", url, command)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -65,10 +71,73 @@ async def execute_command(command: str) -> tuple[bool, str]:
                 auth=(soap_user, soap_password),
             )
         if resp.status_code == 200:
+            result = _parse_response(resp.text)
+            logger.debug("SOAP command %r succeeded: %s", command, result[:120])
+            return True, result
+        logger.warning("SOAP HTTP %d for command %r", resp.status_code, command)
+        return False, f"SOAP error HTTP {resp.status_code}: {resp.text[:200]}"
+    except httpx.ConnectError:
+        logger.warning("SOAP connect error – worldserver may not be running")
+        return False, "Cannot connect to worldserver SOAP endpoint – is the server running?"
+    except Exception as exc:
+        logger.error("SOAP request failed: %s", exc)
+        return False, f"SOAP request failed: {exc}"
+
+
+async def execute_command_for_instance(command: str, instance_id: int) -> tuple[bool, str]:
+    """
+    Send a GM command via SOAP using per-instance credentials when configured.
+
+    Looks up the worldserver instance's ``soap_*`` fields; if any are set
+    they override the global ``AC_SOAP_*`` panel settings.  Falls back
+    gracefully to global settings when no overrides exist.
+    """
+    from app.services.panel_settings import get_settings_dict
+    from app.core.database import PanelSessionLocal
+    from app.models.panel_models import WorldServerInstance
+    from sqlalchemy import select as sa_select
+
+    s = await get_settings_dict()
+    host = s["AC_SOAP_HOST"]
+    port = s["AC_SOAP_PORT"]
+    user = s["AC_SOAP_USER"]
+    password = s["AC_SOAP_PASSWORD"]
+
+    async with PanelSessionLocal() as psess:
+        result = await psess.execute(
+            sa_select(WorldServerInstance).where(WorldServerInstance.id == instance_id)
+        )
+        inst = result.scalar_one_or_none()
+
+    if inst is not None:
+        if inst.soap_host:
+            host = inst.soap_host
+        if inst.soap_port:
+            port = inst.soap_port
+        if inst.soap_user:
+            user = inst.soap_user
+        if inst.soap_password:
+            password = inst.soap_password
+
+    if not user or not password:
+        return False, "SOAP credentials not configured for this instance (set them in Instance settings or global Settings)"
+
+    url = f"http://{host}:{port}/"
+    body = _SOAP_ENVELOPE.format(command=command)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                url,
+                content=body.encode("utf-8"),
+                headers=_HEADERS,
+                auth=(user, password),
+            )
+        if resp.status_code == 200:
             return True, _parse_response(resp.text)
         return False, f"SOAP error HTTP {resp.status_code}: {resp.text[:200]}"
     except httpx.ConnectError:
-        return False, "Cannot connect to worldserver SOAP endpoint – is the server running?"
+        return False, f"Cannot connect to SOAP endpoint {url} – is the server running?"
     except Exception as exc:
         return False, f"SOAP request failed: {exc}"
 

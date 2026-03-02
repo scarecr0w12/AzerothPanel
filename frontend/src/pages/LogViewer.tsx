@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Download, Wifi, WifiOff, Search, Filter, Trash2 } from 'lucide-react'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { logsApi } from '@/services/api'
+import { logsApi, instancesApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import type { LogSource } from '@/types'
+import type { LogSource, WorldServerInstance } from '@/types'
 
 const SOURCES: { value: LogSource; label: string }[] = [
   { value: 'worldserver', label: 'Worldserver' },
@@ -24,10 +25,24 @@ export default function LogViewer() {
   const [source, setSource] = useState<LogSource>('worldserver')
   const [levelFilter, setLevelFilter] = useState('ALL')
   const [search, setSearch] = useState('')
-  const [lines, setLines] = useState<string[]>([])
+  const [lines, setLines] = useState<string[]>([])  
   const [liveMode, setLiveMode] = useState(true)
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>()
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const instancesQuery = useQuery({
+    queryKey: ['worldserver-instances'],
+    queryFn: () => instancesApi.list().then((r) => r.data.instances as WorldServerInstance[]),
+    staleTime: 30_000,
+  })
+  const instances = instancesQuery.data ?? []
+
+  // Build WebSocket path, embedding instance_id in query string when set
+  // so useWebSocket appends &token=... rather than ?token=...
+  const wsPath = selectedInstanceId != null
+    ? `/ws/logs/${source}?instance_id=${selectedInstanceId}`
+    : `/ws/logs/${source}`
 
   // Buffer for incoming WS lines – flushed to state on each animation frame
   // so bursts of many lines cause a single re-render, not one per line.
@@ -55,7 +70,7 @@ export default function LogViewer() {
   // Cancel any pending raf on unmount
   useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current) }, [])
 
-  const { connected, send } = useWebSocket(`/ws/logs/${source}`, {
+  const { connected, send } = useWebSocket(wsPath, {
     onMessage: (raw) => {
       try {
         const { line } = JSON.parse(raw)
@@ -77,16 +92,14 @@ export default function LogViewer() {
     if (liveMode) bottomRef.current?.scrollIntoView({ behavior: 'instant' })
   }, [lines, liveMode])
 
-  // Load historical lines when source changes.
-  // Prepend to current state so any WS lines that arrived while the HTTP
-  // request was in-flight are not discarded.
+  // Load historical lines when source or instance changes.
   useEffect(() => {
     setLines([])
-    logsApi.tail(source, 300).then(({ data }) => {
+    logsApi.tail(source, 300, selectedInstanceId).then(({ data }) => {
       const historical = data.entries.map((e: { message: string }) => e.message)
       setLines((prev) => [...historical, ...prev])
     }).catch(() => {})
-  }, [source])
+  }, [source, selectedInstanceId])
 
   const filtered = search
     ? lines.filter((l) => l.toLowerCase().includes(search.toLowerCase()))
@@ -114,6 +127,22 @@ export default function LogViewer() {
                 }`}>{s.label}</button>
             ))}
           </div>
+          {/* Instance selector (shown when more than one instance exists) */}
+          {instances.length > 1 && (
+            <select
+              value={selectedInstanceId ?? ''}
+              onChange={e => {
+                setSelectedInstanceId(e.target.value === '' ? undefined : Number(e.target.value))
+                setLines([])
+              }}
+              className="bg-panel-bg border border-panel-border rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand"
+            >
+              <option value="">Global (default)</option>
+              {instances.map(i => (
+                <option key={i.id} value={i.id}>{i.display_name}</option>
+              ))}
+            </select>
+          )}
           <div className="h-4 border-l border-panel-border" />
           {/* Level filter */}
           <div className="flex gap-1">
@@ -139,7 +168,7 @@ export default function LogViewer() {
             <Button variant="ghost" size="sm" icon={<Trash2 size={13} />}
               onClick={() => setLines([])}>Clear</Button>
             <Button variant="secondary" size="sm" icon={<Download size={13} />}
-              onClick={() => window.open(logsApi.download(source))}>Download</Button>
+              onClick={() => window.open(logsApi.download(source, selectedInstanceId))}>Download</Button>
           </div>
         </div>
       </Card>

@@ -33,6 +33,9 @@ frontend/.vite/
 *.log
 logs/
 
+# Panel runtime data (SQLite DB + application logs)
+data/
+
 # OS
 .DS_Store
 Thumbs.db

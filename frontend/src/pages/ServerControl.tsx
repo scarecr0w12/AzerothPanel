@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Play, Square, RotateCcw, Terminal, Plus, Pencil, Trash2, X, Server, FileText, ChevronRight } from 'lucide-react'
+import { Play, Square, RotateCcw, Terminal, Plus, Pencil, Trash2, X, Server, FileText, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   useServerStatus,
   useStartAuth, useStopAuth, useRestartAuth,
@@ -312,6 +312,20 @@ interface ModalBasicData {
   notes: string
 }
 
+interface AdvancedData {
+  ac_path: string
+  build_path: string
+  char_db_host: string
+  char_db_port: string
+  char_db_user: string
+  char_db_password: string
+  char_db_name: string
+  soap_host: string
+  soap_port: string
+  soap_user: string
+  soap_password: string
+}
+
 function InstanceModal({
   initial,
   onClose,
@@ -339,6 +353,22 @@ function InstanceModal({
     notes: initial?.notes ?? '',
   })
 
+  // Advanced per-instance overrides
+  const [advanced, setAdvanced] = useState<AdvancedData>({
+    ac_path:          initial?.ac_path          ?? '',
+    build_path:       initial?.build_path        ?? '',
+    char_db_host:     initial?.char_db_host      ?? '',
+    char_db_port:     initial?.char_db_port      ?? '',
+    char_db_user:     initial?.char_db_user      ?? '',
+    char_db_password: initial?.char_db_password  ?? '',
+    char_db_name:     initial?.char_db_name      ?? '',
+    soap_host:        initial?.soap_host         ?? '',
+    soap_port:        initial?.soap_port         ?? '',
+    soap_user:        initial?.soap_user         ?? '',
+    soap_password:    initial?.soap_password     ?? '',
+  })
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
   // Step 2 — provision / config generation
   const [generateConf, setGenerateConf] = useState(true)
   const [provision, setProvision] = useState<WorldServerProvisionRequest>({
@@ -363,7 +393,7 @@ function InstanceModal({
   function handleStep1Submit(e: React.FormEvent) {
     e.preventDefault()
     if (isEdit) {
-      onSave({ display_name: basic.display_name, binary_path: basic.binary_path, working_dir: basic.working_dir, notes: basic.notes })
+      onSave({ display_name: basic.display_name, binary_path: basic.binary_path, working_dir: basic.working_dir, notes: basic.notes, ...advanced })
     } else {
       setStep(2)
     }
@@ -372,7 +402,7 @@ function InstanceModal({
   function handleStep2Submit(e: React.FormEvent) {
     e.preventDefault()
     onSaveWithProvision(
-      { display_name: basic.display_name, process_name: basic.process_name, binary_path: basic.binary_path, working_dir: basic.working_dir, notes: basic.notes },
+      { display_name: basic.display_name, process_name: basic.process_name, binary_path: basic.binary_path, working_dir: basic.working_dir, notes: basic.notes, ...advanced },
       generateConf ? { ...provision } : null,
     )
   }
@@ -443,6 +473,91 @@ function InstanceModal({
               <label className={labelCls}>Notes (optional)</label>
               <input value={basic.notes} onChange={e => setBasic(b => ({ ...b, notes: e.target.value }))}
                 placeholder="Seasonal realm, long-term test, …" className={inputCls} />
+            </div>
+
+            {/* Per-instance overrides */}
+            <div className="border border-panel-border rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-panel-muted hover:text-white hover:bg-panel-hover transition-colors"
+              >
+                <span className="font-medium">Per-Instance Overrides{' '}
+                  <span className="font-normal">(optional — blank = use global settings)</span>
+                </span>
+                {showAdvanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+              {showAdvanced && (
+                <div className="p-4 space-y-3 border-t border-panel-border bg-panel-bg/40">
+                  <p className="text-xs text-panel-muted">Values here override the global Settings for this instance only.</p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Source Path (ac_path)</label>
+                      <input value={advanced.ac_path} onChange={e => setAdvanced(a => ({ ...a, ac_path: e.target.value }))}
+                        placeholder="(global AC_PATH)" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Build Path (build_path)</label>
+                      <input value={advanced.build_path} onChange={e => setAdvanced(a => ({ ...a, build_path: e.target.value }))}
+                        placeholder="(global AC_BUILD_PATH)" className={inputCls} />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-panel-muted border-t border-panel-border pt-3">Characters DB (overrides global AC_CHAR_DB_*)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Host</label>
+                      <input value={advanced.char_db_host} onChange={e => setAdvanced(a => ({ ...a, char_db_host: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Port</label>
+                      <input value={advanced.char_db_port} onChange={e => setAdvanced(a => ({ ...a, char_db_port: e.target.value }))}
+                        placeholder="3306" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>User</label>
+                      <input value={advanced.char_db_user} onChange={e => setAdvanced(a => ({ ...a, char_db_user: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Password</label>
+                      <input type="password" value={advanced.char_db_password} onChange={e => setAdvanced(a => ({ ...a, char_db_password: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={labelCls}>Database Name</label>
+                      <input value={advanced.char_db_name} onChange={e => setAdvanced(a => ({ ...a, char_db_name: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-panel-muted border-t border-panel-border pt-3">SOAP (overrides global AC_SOAP_*)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Host</label>
+                      <input value={advanced.soap_host} onChange={e => setAdvanced(a => ({ ...a, soap_host: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Port</label>
+                      <input value={advanced.soap_port} onChange={e => setAdvanced(a => ({ ...a, soap_port: e.target.value }))}
+                        placeholder="7878" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>GM Account</label>
+                      <input value={advanced.soap_user} onChange={e => setAdvanced(a => ({ ...a, soap_user: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>GM Password</label>
+                      <input type="password" value={advanced.soap_password} onChange={e => setAdvanced(a => ({ ...a, soap_password: e.target.value }))}
+                        placeholder="(global)" className={inputCls} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-1">

@@ -9,9 +9,12 @@ Follows the official Debian 12/13 guide:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import AsyncIterator
+
+logger = logging.getLogger(__name__)
 
 # ── Package lists ──────────────────────────────────────────────────────────────
 
@@ -105,6 +108,7 @@ async def run_installation(config: dict) -> AsyncIterator[str]:
         db_user         – MySQL app user        (default acore)
         db_password     – MySQL root password   (default acore)
     """
+    logger.info("Installation started with config: %s", {k: v for k, v in config.items() if 'password' not in k.lower()})
     from app.models.schemas import REPO_STANDARD, REPO_PLAYERBOT
 
     ac_path     = Path(config.get("ac_path",      "/opt/azerothcore"))

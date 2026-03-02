@@ -8,8 +8,12 @@ remain in .env.
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from app.core.config import settings as boot_settings
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Default values for every runtime setting
@@ -95,6 +99,14 @@ async def update_settings(updates: dict[str, str]) -> dict[str, str]:
     from app.models.panel_models import PanelSetting
 
     db_keys_changed = bool(set(updates.keys()) & _DB_KEYS)
+    # Log keys being updated (excluding sensitive values)
+    safe_keys = [k for k in updates if 'password' not in k.lower() and 'secret' not in k.lower()]
+    sensitive_keys = [k for k in updates if k not in safe_keys]
+    logger.info(
+        "Updating settings: %s%s",
+        safe_keys,
+        f" (+ {len(sensitive_keys)} sensitive key(s) redacted)" if sensitive_keys else "",
+    )
 
     async with PanelSessionLocal() as session:
         for key, value in updates.items():
@@ -106,6 +118,7 @@ async def update_settings(updates: dict[str, str]) -> dict[str, str]:
         await session.commit()
 
     if db_keys_changed:
+        logger.info("Database connection keys changed – clearing AC engine cache")
         await clear_ac_engine_cache()
 
     return await get_settings_dict()

@@ -21,6 +21,7 @@ POST   /server/instances/{id}/generate-config  – create conf from defaults
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Optional
@@ -45,6 +46,7 @@ from app.models.schemas import (
 )
 from app.services.azerothcore import server_manager as sm
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/server/instances", tags=["Worldserver Instances"])
 
 
@@ -76,6 +78,17 @@ async def _enrich(inst: WorldServerInstance) -> WorldServerInstanceSchema:
         conf_path=inst.conf_path,
         notes=inst.notes,
         sort_order=inst.sort_order,
+        ac_path=inst.ac_path,
+        build_path=inst.build_path,
+        char_db_host=inst.char_db_host,
+        char_db_port=inst.char_db_port,
+        char_db_user=inst.char_db_user,
+        char_db_password=inst.char_db_password,
+        char_db_name=inst.char_db_name,
+        soap_host=inst.soap_host,
+        soap_port=inst.soap_port,
+        soap_user=inst.soap_user,
+        soap_password=inst.soap_password,
         status=status,
     )
 
@@ -129,6 +142,7 @@ async def create_instance(
     db: AsyncSession = Depends(get_panel_db),
 ):
     """Create a new worldserver instance entry."""
+    logger.info("Creating instance: process_name=%s display_name=%s", body.process_name, body.display_name)
     existing = await db.execute(
         select(WorldServerInstance).where(
             WorldServerInstance.process_name == body.process_name
@@ -148,6 +162,17 @@ async def create_instance(
         conf_path=body.conf_path,
         notes=body.notes,
         sort_order=body.sort_order,
+        ac_path=body.ac_path,
+        build_path=body.build_path,
+        char_db_host=body.char_db_host,
+        char_db_port=body.char_db_port,
+        char_db_user=body.char_db_user,
+        char_db_password=body.char_db_password,
+        char_db_name=body.char_db_name,
+        soap_host=body.soap_host,
+        soap_port=body.soap_port,
+        soap_user=body.soap_user,
+        soap_password=body.soap_password,
     )
     db.add(obj)
     await db.commit()
@@ -187,6 +212,31 @@ async def update_instance(
         obj.notes = body.notes
     if body.sort_order is not None:
         obj.sort_order = body.sort_order
+    # Per-instance path overrides
+    if body.ac_path is not None:
+        obj.ac_path = body.ac_path
+    if body.build_path is not None:
+        obj.build_path = body.build_path
+    # Per-instance characters DB overrides
+    if body.char_db_host is not None:
+        obj.char_db_host = body.char_db_host
+    if body.char_db_port is not None:
+        obj.char_db_port = body.char_db_port
+    if body.char_db_user is not None:
+        obj.char_db_user = body.char_db_user
+    if body.char_db_password is not None:
+        obj.char_db_password = body.char_db_password
+    if body.char_db_name is not None:
+        obj.char_db_name = body.char_db_name
+    # Per-instance SOAP overrides
+    if body.soap_host is not None:
+        obj.soap_host = body.soap_host
+    if body.soap_port is not None:
+        obj.soap_port = body.soap_port
+    if body.soap_user is not None:
+        obj.soap_user = body.soap_user
+    if body.soap_password is not None:
+        obj.soap_password = body.soap_password
 
     await db.commit()
     await db.refresh(obj)
@@ -201,7 +251,7 @@ async def delete_instance(
 ):
     """Delete an instance.  If the process is running it will be stopped first."""
     obj = await _get_instance_or_404(instance_id, db)
-
+    logger.info("Deleting instance %d (%s)", instance_id, obj.display_name)
     status = await sm.get_instance_status(obj.process_name)
     if status.running:
         await sm.stop_instance(obj.process_name)
@@ -222,9 +272,11 @@ async def start_instance(
     db: AsyncSession = Depends(get_panel_db),
 ):
     obj = await _get_instance_or_404(instance_id, db)
+    logger.info("Starting instance %d (%s)", instance_id, obj.process_name)
     ok, msg = await sm.start_instance(
         obj.process_name, obj.binary_path, obj.working_dir, obj.conf_path
     )
+    logger.info("start_instance %s → ok=%s msg=%s", obj.process_name, ok, msg)
     return ServerActionResponse(success=ok, message=msg)
 
 
@@ -235,7 +287,9 @@ async def stop_instance(
     db: AsyncSession = Depends(get_panel_db),
 ):
     obj = await _get_instance_or_404(instance_id, db)
+    logger.info("Stopping instance %d (%s)", instance_id, obj.process_name)
     ok, msg = await sm.stop_instance(obj.process_name)
+    logger.info("stop_instance %s → ok=%s msg=%s", obj.process_name, ok, msg)
     return ServerActionResponse(success=ok, message=msg)
 
 
@@ -259,9 +313,22 @@ async def instance_command(
     _: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_panel_db),
 ):
-    """Send a console command to a specific worldserver instance."""
+    """
+    Send a console command to a specific worldserver instance.
+
+    When the instance has ``soap_host`` / ``soap_user`` / ``soap_password``
+    configured, the command is sent via that instance's SOAP endpoint.
+    Otherwise falls back to the daemon stdin pipe.
+    """
     obj = await _get_instance_or_404(instance_id, db)
-    ok, result = await sm.send_instance_command(obj.process_name, req.command)
+    logger.info("Instance %d (%s) command: %r", instance_id, obj.process_name, req.command)
+
+    if obj.soap_user and obj.soap_password:
+        from app.services.azerothcore.soap_client import execute_command_for_instance
+        ok, result = await execute_command_for_instance(req.command, obj.id)
+    else:
+        ok, result = await sm.send_instance_command(obj.process_name, req.command)
+
     return SoapCommandResponse(success=ok, result=result)
 
 
@@ -354,12 +421,19 @@ async def generate_instance_config(
 
     content = src_path.read_text(errors="replace")
 
+    # Derive a unique log directory for this instance so its logs are
+    # separated from every other worldserver instance.
+    out_stem = Path(req.conf_output_path).stem  # e.g. "worldserver-ptr"
+    default_log_dir = str(Path(req.conf_output_path).parent.parent / "logs" / out_stem)
+
     # Build the patch dict
     overrides: dict[str, str] = {
         "RealmID": str(req.realm_id),
+        "RealmName": req.realm_name,
         "WorldServerPort": str(req.worldserver_port),
         "InstanceserverPort": str(req.instance_port),
         "Ra.Port": str(req.ra_port),
+        "LogsDir": default_log_dir,
     }
     if req.extra_overrides:
         overrides.update(req.extra_overrides)
@@ -373,15 +447,36 @@ async def generate_instance_config(
 
     # Update the instance's conf_path in the DB
     obj.conf_path = str(out_path)
+
+    # Auto-configure binary_path and working_dir when not already set.
+    # After compilation the build step creates a symlink named process_name
+    # (e.g. worldserver-ptr) alongside the worldserver binary.  Point at
+    # that symlink so the daemon can uniquely identify this instance's process.
+    bin_dir = s.get("AC_BINARY_PATH", "")  # e.g. /opt/azerothcore/bin
+    if bin_dir and obj.process_name and obj.process_name != "worldserver":
+        expected_binary = str(Path(bin_dir) / obj.process_name)
+        if not obj.binary_path:
+            obj.binary_path = expected_binary
+        if not obj.working_dir:
+            obj.working_dir = bin_dir
+
     await db.commit()
+
+    binary_note = (
+        f" Instance binary set to {obj.binary_path}."
+        if (bin_dir and obj.process_name and obj.process_name != "worldserver")
+        else " Run a compilation targeting this instance to create the named binary."
+    )
 
     return ServerActionResponse(
         success=True,
         message=(
             f"Config generated at {out_path} with "
+            f"RealmName={req.realm_name}, "
             f"WorldServerPort={req.worldserver_port}, "
             f"InstanceserverPort={req.instance_port}, "
-            f"RealmID={req.realm_id}. "
-            "Edit it via the Config tab before starting."
+            f"RealmID={req.realm_id}, "
+            f"LogsDir={default_log_dir}."
+            f"{binary_note}"
         ),
     )

@@ -120,11 +120,28 @@ Manage multiple independent worldserver processes from a single panel. Each inst
 {
   "display_name": "PTR Realm",
   "process_name": "worldserver-ptr",
-  "binary_path": "/opt/azerothcore/bin/worldserver",
+  "binary_path": "/opt/azerothcore/bin/worldserver-ptr",
   "working_dir": "/opt/azerothcore/bin",
-  "notes": "Public test realm"
+  "notes": "Public test realm",
+  "ac_path": "/opt/azerothcore-ptr",
+  "build_path": "/opt/azerothcore-ptr/build",
+  "char_db_host": "127.0.0.1",
+  "char_db_port": "3306",
+  "char_db_user": "acore",
+  "char_db_password": "acore",
+  "char_db_name": "acore_characters_ptr",
+  "soap_host": "127.0.0.1",
+  "soap_port": "7879",
+  "soap_user": "gm",
+  "soap_password": "gmpassword"
 }
 ```
+
+All per-instance override fields (`ac_path`, `build_path`, `char_db_*`, `soap_*`) are optional and default to `""`.  An empty value means "use the global setting from the Settings page" — single-realm setups require no changes.
+
+#### `POST /api/v1/server/instances/{id}/command` — Send a GM command
+
+When the instance has `soap_user` / `soap_password` configured, the command is routed through that instance's SOAP endpoint. Otherwise it falls back to the daemon stdin pipe.
 
 #### `POST /api/v1/server/instances/{id}/generate-config` — Provision a conf file
 
@@ -139,7 +156,7 @@ Manage multiple independent worldserver processes from a single panel. Each inst
 }
 ```
 
-The endpoint copies the global `worldserver.conf` and patches the specified key=value pairs in-place. The instance's `conf_path` is updated in the database.
+The endpoint copies the global `worldserver.conf` and patches the specified key=value pairs in-place (including `RealmName` and a unique per-instance `LogsDir`).  The instance's `conf_path`, `binary_path`, and `working_dir` are updated in the database.  If `AC_BINARY_PATH` is configured and `process_name` differs from `"worldserver"`, `binary_path` is set to `<AC_BINARY_PATH>/<process_name>` automatically.
 
 ---
 
@@ -158,6 +175,20 @@ The endpoint copies the global `worldserver.conf` and patches the specified key=
 | `POST` | `/kick/{player_name}` | Kick an online player |
 | `POST` | `/announce` | Send a message to all online players |
 | `POST` | `/modify` | Modify a player's stats (level, gold, etc.) |
+
+#### `GET /api/v1/players/characters`
+
+Query parameters:
+
+| Param | Type | Description |
+|---|---|---|
+| `search` | `string` | Filter by character name |
+| `page` | `int` | Page number (default `1`) |
+| `page_size` | `int` | Results per page (default `50`) |
+| `online_only` | `bool` | Return only online characters (default `false`) |
+| `instance_id` | `int` | Scope to a specific worldserver instance's character database |
+
+`GET /characters/{guid}` also accepts `instance_id` as a query parameter.
 
 #### `GET /api/v1/players/accounts`
 
@@ -198,7 +229,12 @@ Query parameters:
 
 | Param | Type | Description |
 |---|---|---|
-| `lines` | `int` | Number of tail lines to return (default `100`) |
+| `lines` | `int` | Number of tail lines to return (default `500`) |
+| `level` | `string` | Filter by log level (`ERROR`, `WARN`, `INFO`, `DEBUG`) |
+| `search` | `string` | Full-text search pattern (regex supported) |
+| `instance_id` | `int` | Scope to a specific worldserver instance's log directory |
+
+`/sources`, `/{source}/size`, and `/{source}/download` also accept `instance_id`.
 
 ---
 
@@ -216,12 +252,25 @@ Query parameters:
 
 > **Playerbots database**: The `playerbots` target is only included in `/available` (and accepted by all other endpoints) when `{AC_PATH}/modules/mod-playerbots` exists on disk. Requests using `playerbots` when the module is absent return HTTP 404.
 
+#### Per-instance characters database
+
+All database endpoints accept an optional `instance_id` query parameter (or request-body field for POST endpoints).  When supplied and the target database is `characters`, the panel uses that instance's `char_db_*` credential overrides instead of the global `AC_CHAR_DB_*` settings.  All other databases always use global credentials.
+
+#### `GET /api/v1/database/tables/{database}`
+
+Query parameters:
+
+| Param | Type | Description |
+|---|---|---|
+| `instance_id` | `int` | Scope `characters` DB to a specific worldserver instance |
+
 #### `POST /api/v1/database/query`
 
 ```json
 {
-  "database": "world",
-  "query": "SELECT entry, name FROM creature_template LIMIT 10"
+  "database": "characters",
+  "query": "SELECT guid, name, level FROM characters LIMIT 10",
+  "instance_id": 2
 }
 ```
 
@@ -261,10 +310,16 @@ The `/run` endpoint uses **Server-Sent Events (SSE)**. The client receives a str
 
 ```json
 {
-  "cmake_options": "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-  "cores": 4
+  "build_type": "RelWithDebInfo",
+  "jobs": 4,
+  "cmake_extra": "-DTOOLS_BUILD=all",
+  "ac_path": "/opt/azerothcore-ptr",
+  "build_path": "/opt/azerothcore-ptr/build",
+  "process_name": "worldserver-ptr"
 }
 ```
+
+`ac_path` and `build_path` override the global AC_PATH / AC_BUILD_PATH for this build only. When `process_name` is set (and differs from `"worldserver"`), a `worldserver-ptr` symlink is created alongside the `worldserver` binary in the build's `bin/` directory — enabling the daemon to track the process independently.
 
 The response is an **SSE stream** of build output lines.
 
@@ -376,12 +431,14 @@ Response:
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/catalogue` | List available modules from the AzerothCore GitHub catalogue |
-| `GET` | `/installed` | List locally installed modules |
-| `POST` | `/install` | Clone and install a module by repository slug |
-| `POST` | `/update-azerothcore` | `git pull` the AzerothCore source tree (SSE stream) |
-| `POST` | `/update-all` | `git pull` all installed git-tracked modules (SSE stream) |
-| `POST` | `/{module_name}/update` | `git pull` a single installed module (SSE stream) |
-| `DELETE` | `/{module_name}` | Remove an installed module |
+| `GET` | `/installed` | List locally installed modules (`ac_path` query param to target a specific installation) |
+| `POST` | `/install` | Clone and install a module (`ac_path` in body to target a specific installation) |
+| `POST` | `/update-azerothcore` | `git pull` the AzerothCore source tree (`{"ac_path": "..."}` body to target a specific installation) (SSE stream) |
+| `POST` | `/update-all` | `git pull` all installed git-tracked modules (`{"ac_path": "..."}` body) (SSE stream) |
+| `POST` | `/{module_name}/update` | `git pull` a single installed module (`ac_path` query param) (SSE stream) |
+| `DELETE` | `/{module_name}` | Remove an installed module (`ac_path` query param to target a specific installation) |
+
+All path-mutating endpoints accept an `ac_path` override so you can manage modules for a secondary AC installation without changing the global Settings.
 
 ---
 
@@ -400,16 +457,29 @@ Response:
 ## WebSocket — Live Log Streaming
 
 ```
-ws://<host>/ws/logs/{source}
+ws://<host>/ws/logs/{source}?token=<jwt>[&instance_id=<id>]
 ```
 
-Opens a persistent WebSocket connection that streams new log lines in real time as they are appended to the log file. Each message is a plain-text log line.
+Opens a persistent WebSocket connection that streams new log lines in real time as they are appended to the log file.  Authentication is via the `token` query parameter (the same JWT returned by `/auth/login`).
+
+| Query Param | Description |
+|---|---|
+| `token` | **Required.** JWT bearer token. |
+| `instance_id` | Optional. Scope the stream to a specific worldserver instance's log directory. |
+
+The client can send a JSON message to update the level filter at any time:
+
+```json
+{ "level": "ERROR" }
+```
+
+Set `level` to `null` to stream all lines.
 
 ### Example (JavaScript)
 
 ```javascript
-const ws = new WebSocket("ws://localhost/ws/logs/worldserver");
-ws.onmessage = (event) => console.log(event.data);
+const ws = new WebSocket("ws://localhost/ws/logs/worldserver?token=eyJ...&instance_id=2");
+ws.onmessage = (event) => console.log(JSON.parse(event.data).line);
 ```
 
 ---

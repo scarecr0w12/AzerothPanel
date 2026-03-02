@@ -8,12 +8,15 @@ directory inside the AzerothCore source tree.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 from pathlib import Path
 from typing import AsyncIterator
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # ── GitHub topic constants ─────────────────────────────────────────────────────
 
@@ -242,6 +245,7 @@ async def install_module(
 
     branch_flag = f"--branch {branch}" if branch else ""
     cmd = f"git clone --recursive {branch_flag} {clone_url} {clean_name}"
+    logger.info("Cloning module %r from %s into %s", clean_name, clone_url, dest)
     yield f"[info] Cloning into {dest} …"
     yield f"[cmd] {cmd}"
 
@@ -250,9 +254,11 @@ async def install_module(
         yield line
 
     if rc and rc[0] == 0:
+        logger.info("Module %r installed successfully", clean_name)
         yield f"[ok] Module '{clean_name}' installed successfully."
         yield "[done]"
     else:
+        logger.error("git clone failed for module %r (exit %s)", clean_name, rc[0] if rc else 'unknown')
         yield f"[error] git clone exited with code {rc[0] if rc else 'unknown'}."
         # Clean up partial clone
         if dest.exists():
@@ -275,8 +281,10 @@ def remove_module(module_name: str, modules_path: str) -> dict:
 
     try:
         shutil.rmtree(dest)
+        logger.info("Module %r removed from %s", module_name, modules_path)
         return {"success": True, "message": f"Module '{module_name}' removed."}
     except Exception as exc:
+        logger.error("Failed to remove module %r: %s", module_name, exc)
         return {"success": False, "message": str(exc)}
 
 

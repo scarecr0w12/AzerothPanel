@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from jose import JWTError, jwt
@@ -18,6 +19,7 @@ from jose import JWTError, jwt
 from app.core.config import settings
 from app.services.logs import tail_follow
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 ALGORITHM = "HS256"
 
@@ -35,16 +37,19 @@ async def ws_logs(
     websocket: WebSocket,
     source: str,
     token: str = Query(...),
+    instance_id: int | None = Query(default=None),
 ):
     """
     Stream live log lines for a given source to the browser.
     Authentication is via `?token=<jwt>` query parameter.
     """
     if not _verify_token(token):
+        logger.warning("WebSocket /ws/logs/%s rejected: invalid token", source)
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
     await websocket.accept()
+    logger.debug("WebSocket /ws/logs/%s connected (instance_id=%s)", source, instance_id)
     active_level_filter: list[str | None] = [None]
 
     async def _recv_loop():
@@ -60,7 +65,7 @@ async def ws_logs(
     recv_task = asyncio.create_task(_recv_loop())
 
     try:
-        async for line in tail_follow(source):
+        async for line in tail_follow(source, instance_id):
             # Apply level filter if set
             lvl = active_level_filter[0]
             if lvl:
@@ -77,6 +82,7 @@ async def ws_logs(
         pass
     finally:
         recv_task.cancel()
+        logger.debug("WebSocket /ws/logs/%s disconnected", source)
         try:
             await websocket.close()
         except Exception:

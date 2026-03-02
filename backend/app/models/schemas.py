@@ -63,6 +63,20 @@ class WorldServerInstanceSchema(BaseModel):
     conf_path: str
     notes: str
     sort_order: int
+    # Per-instance AC installation overrides (empty → global)
+    ac_path: str = ""
+    build_path: str = ""
+    # Per-instance characters DB overrides (empty → global)
+    char_db_host: str = ""
+    char_db_port: str = ""
+    char_db_user: str = ""
+    char_db_password: str = ""
+    char_db_name: str = ""
+    # Per-instance SOAP overrides (empty → global)
+    soap_host: str = ""
+    soap_port: str = ""
+    soap_user: str = ""
+    soap_password: str = ""
     status: Optional[ProcessStatus] = None
 
     model_config = {"from_attributes": True}
@@ -77,6 +91,20 @@ class WorldServerInstanceCreate(BaseModel):
     conf_path: str = ""      # path to worldserver.conf; empty → binary default
     notes: str = ""
     sort_order: int = 0
+    # Per-instance AC installation (empty → global AC_PATH / AC_BUILD_PATH)
+    ac_path: str = ""
+    build_path: str = ""
+    # Per-instance characters DB (empty → global AC_CHAR_DB_*)
+    char_db_host: str = ""
+    char_db_port: str = ""
+    char_db_user: str = ""
+    char_db_password: str = ""
+    char_db_name: str = ""
+    # Per-instance SOAP (empty → global AC_SOAP_*)
+    soap_host: str = ""
+    soap_port: str = ""
+    soap_user: str = ""
+    soap_password: str = ""
 
 
 class WorldServerInstanceUpdate(BaseModel):
@@ -87,6 +115,20 @@ class WorldServerInstanceUpdate(BaseModel):
     conf_path: Optional[str] = None
     notes: Optional[str] = None
     sort_order: Optional[int] = None
+    # Per-instance AC installation overrides
+    ac_path: Optional[str] = None
+    build_path: Optional[str] = None
+    # Per-instance characters DB overrides
+    char_db_host: Optional[str] = None
+    char_db_port: Optional[str] = None
+    char_db_user: Optional[str] = None
+    char_db_password: Optional[str] = None
+    char_db_name: Optional[str] = None
+    # Per-instance SOAP overrides
+    soap_host: Optional[str] = None
+    soap_port: Optional[str] = None
+    soap_user: Optional[str] = None
+    soap_password: Optional[str] = None
 
 
 class WorldServerInstanceListResponse(BaseModel):
@@ -172,6 +214,7 @@ class SqlQueryRequest(BaseModel):
     database: str   # "auth" | "characters" | "world"
     query: str
     max_rows: int = 500
+    instance_id: Optional[int] = None  # scope characters DB to this worldserver instance
 
 
 class SqlQueryResponse(BaseModel):
@@ -361,6 +404,12 @@ class BuildConfig(BaseModel):
     build_type: str = "RelWithDebInfo"   # Debug | Release | RelWithDebInfo
     jobs: int = 4
     cmake_extra: str = ""
+    # Optional per-instance path overrides (empty → use global panel settings)
+    ac_path: Optional[str] = None       # AzerothCore source root
+    build_path: Optional[str] = None    # CMake build/install directory
+    # When compiling for a specific instance, create a named symlink of the
+    # worldserver binary so the daemon can track it by a unique process name.
+    process_name: Optional[str] = None  # e.g. "worldserver-ptr"
 
 
 class BuildStatusResponse(BaseModel):
