@@ -4,7 +4,7 @@ SQLAlchemy ORM models for the AzerothPanel SQLite database.
 - PanelSetting  – runtime-configurable key/value settings
 - WorldServerInstance – registry of managed worldserver processes
 """
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -68,4 +68,53 @@ class WorldServerInstance(Base):
 
     def __repr__(self) -> str:
         return f"<WorldServerInstance id={self.id} name={self.display_name!r} proc={self.process_name!r}>"
+
+
+class BackupDestination(Base):
+    """
+    A named backup storage target.
+
+    ``type`` must be one of: "local", "sftp", "ftp", "s3", "gdrive", "onedrive".
+    ``config`` is a JSON blob whose schema depends on ``type`` – see
+    backup_manager.py for the full field reference per provider.
+    """
+    __tablename__ = "backup_destinations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)   # local|sftp|ftp|s3|gdrive|onedrive
+    config: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # JSON
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+
+    def __repr__(self) -> str:
+        return f"<BackupDestination id={self.id} name={self.name!r} type={self.type!r}>"
+
+
+class BackupJob(Base):
+    """
+    Record of a single backup run.
+
+    ``destination_id`` references BackupDestination.id; None means the archive
+    was stored locally and the absolute path is stored in ``local_path``.
+    ``status`` is one of: "pending", "running", "completed", "failed".
+    """
+    __tablename__ = "backup_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    destination_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    include_configs: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    include_databases: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    include_server_files: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # archive name
+    local_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # absolute path if local
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    completed_at: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    def __repr__(self) -> str:
+        return f"<BackupJob id={self.id} status={self.status!r} dest={self.destination_id}>"
 

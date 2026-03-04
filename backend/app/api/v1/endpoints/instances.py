@@ -27,11 +27,10 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_panel_db
+from app.core.database import get_panel_db, get_auth_db
 from app.core.security import get_current_user
 from app.models.panel_models import WorldServerInstance
 from app.models.schemas import (
@@ -449,24 +448,88 @@ async def generate_instance_config(
     obj.conf_path = str(out_path)
 
     # Auto-configure binary_path and working_dir when not already set.
-    # After compilation the build step creates a symlink named process_name
-    # (e.g. worldserver-ptr) alongside the worldserver binary.  Point at
-    # that symlink so the daemon can uniquely identify this instance's process.
+    # A symlink named <process_name> (e.g. worldserver-ptr) is created beside
+    # the worldserver binary so the OS reports a unique process name, which lets
+    # the daemon and psutil tell instances apart by name.
     bin_dir = s.get("AC_BINARY_PATH", "")  # e.g. /opt/azerothcore/bin
+    binary_note = ""
     if bin_dir and obj.process_name and obj.process_name != "worldserver":
-        expected_binary = str(Path(bin_dir) / obj.process_name)
+        expected_binary = Path(bin_dir) / obj.process_name
+        base_binary = Path(bin_dir) / "worldserver"
+
         if not obj.binary_path:
-            obj.binary_path = expected_binary
+            obj.binary_path = str(expected_binary)
         if not obj.working_dir:
             obj.working_dir = bin_dir
 
+        # Create/refresh the symlink so start can find the binary immediately.
+        if base_binary.exists():
+            try:
+                if expected_binary.is_symlink() or expected_binary.exists():
+                    expected_binary.unlink()
+                expected_binary.symlink_to(base_binary)
+                logger.info("Created symlink %s -> %s", expected_binary, base_binary)
+                binary_note = f" Symlink {expected_binary} -> {base_binary} created."
+            except Exception as exc:
+                logger.warning("Could not create symlink %s: %s", expected_binary, exc)
+                binary_note = f" Warning: could not create symlink {expected_binary}: {exc}"
+        else:
+            binary_note = (
+                f" Binary {base_binary} not found – install/compile AzerothCore first"
+                f" or the instance will fail to start."
+            )
+    else:
+        binary_note = " Using shared 'worldserver' binary (default instance)."
+
     await db.commit()
 
-    binary_note = (
-        f" Instance binary set to {obj.binary_path}."
-        if (bin_dir and obj.process_name and obj.process_name != "worldserver")
-        else " Run a compilation targeting this instance to create the named binary."
-    )
+    # -------------------------------------------------------------------
+    # Ensure a matching row exists in acore_auth.realmlist so the server
+    # can look itself up on startup and bind its network port.
+    # -------------------------------------------------------------------
+    realmlist_note = ""
+    try:
+        async for auth_db in get_auth_db():
+            row = await auth_db.execute(
+                text("SELECT COUNT(*) FROM realmlist WHERE id = :rid"),
+                {"rid": req.realm_id},
+            )
+            if row.scalar() == 0:
+                addr_override = req.realm_address.strip() if req.realm_address else None
+                await auth_db.execute(
+                    text("""
+                        INSERT INTO realmlist
+                            (id, name, address, localAddress, localSubnetMask,
+                             port, icon, flag, timezone, allowedSecurityLevel,
+                             population, gamebuild)
+                        SELECT :realm_id, :realm_name,
+                               COALESCE(:realm_addr, address),
+                               localAddress, localSubnetMask,
+                               :port, icon, flag, timezone,
+                               allowedSecurityLevel, 0, gamebuild
+                        FROM realmlist WHERE id = 1
+                    """),
+                    {
+                        "realm_id":   req.realm_id,
+                        "realm_name": req.realm_name,
+                        "realm_addr": addr_override,
+                        "port":       req.worldserver_port,
+                    },
+                )
+                await auth_db.commit()
+                realmlist_note = (
+                    f" Realm '{req.realm_name}' (id={req.realm_id},"
+                    f" port={req.worldserver_port}) added to realmlist."
+                )
+            else:
+                realmlist_note = (
+                    f" Realm id={req.realm_id} already exists in realmlist"
+                    f" — update it manually if its port/address changed."
+                )
+            break  # async-for yields exactly once
+    except Exception as exc:
+        logger.warning("Could not update realmlist for realm_id=%d: %s", req.realm_id, exc)
+        realmlist_note = f" Warning: could not update realmlist: {exc}"
 
     return ServerActionResponse(
         success=True,
@@ -478,5 +541,6 @@ async def generate_instance_config(
             f"RealmID={req.realm_id}, "
             f"LogsDir={default_log_dir}."
             f"{binary_note}"
+            f"{realmlist_note}"
         ),
     )

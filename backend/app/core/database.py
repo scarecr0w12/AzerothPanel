@@ -84,6 +84,36 @@ async def run_panel_db_migrations() -> None:
                     text(f"ALTER TABLE worldserver_instances ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
                 )
 
+        # v1.3 – backup_destinations and backup_jobs tables
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS backup_destinations (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT NOT NULL,
+                type        TEXT NOT NULL,
+                config      TEXT NOT NULL DEFAULT '{}',
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT NOT NULL DEFAULT ''
+            )
+        """))
+
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS backup_jobs (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                destination_id       INTEGER,
+                status               TEXT NOT NULL DEFAULT 'pending',
+                include_configs      INTEGER NOT NULL DEFAULT 1,
+                include_databases    INTEGER NOT NULL DEFAULT 1,
+                include_server_files INTEGER NOT NULL DEFAULT 0,
+                filename             TEXT NOT NULL DEFAULT '',
+                local_path           TEXT NOT NULL DEFAULT '',
+                size_bytes           INTEGER NOT NULL DEFAULT 0,
+                started_at           TEXT NOT NULL DEFAULT '',
+                completed_at         TEXT NOT NULL DEFAULT '',
+                error                TEXT NOT NULL DEFAULT '',
+                notes                TEXT NOT NULL DEFAULT ''
+            )
+        """))
+
 
 async def get_panel_db() -> AsyncIterator[AsyncSession]:
     async with PanelSessionLocal() as session:

@@ -10,18 +10,17 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
 
 | Category | Capabilities |
 |---|---|
-| **Server Control** | Start, stop & restart worldserver / authserver; **multi-instance worldserver management** with independent per-process start/stop/restart/console; SOAP GM command execution; in-game server announcements |
-| **Multi-Instance Provisioning** | 2-step wizard creates additional worldserver instances from the UI; auto-generates a patched `worldserver.conf` with custom ports, realm name and realm ID; per-instance config tab for live editing |
+| **Server Control** | Start, stop & restart worldserver / authserver; SOAP command execution; in-game server announcements |
 | **Player Management** | List online players, browse accounts & characters, ban/unban accounts, kick players, bulk announcements, character stat modification |
 | **Log Viewer** | Real-time log streaming (WebSocket), paginated log history, log download, multiple log sources |
-| **Database Manager** | Browse world/auth/characters/playerbots databases, execute SQL queries (read-only safety checks), table browser, database backup; **playerbots tab auto-detected** when `mod-playerbots` is installed |
-| **Compiler** | Trigger AzerothCore CMake builds with streaming SSE progress output; **Pull Latest Source** (`git pull`) from the same page |
+| **Database Manager** | Browse world/auth/characters databases, execute SQL queries (read-only safety checks), table browser, database backup |
+| **Compiler** | Trigger AzerothCore CMake builds with streaming SSE progress output, view build status |
 | **Installer** | Run the AzerothCore data installation steps with live progress, read/edit `worldserver.conf` and `authserver.conf` in-browser |
 | **Data Extraction** | Download pre-extracted client data from AzerothCore releases, or extract from local WoW 3.3.5a client (DBC, Maps, VMaps, MMaps) |
-| **Module Manager** | Browse, install, and remove AzerothCore modules from the community catalogue; **per-module and bulk `git pull` updates** |
+| **Module Manager** | Browse, install, and remove AzerothCore modules from the community catalogue |
 | **Config Editor** | In-browser syntax-highlighted editor for `worldserver.conf`, `authserver.conf`, and installed module configs |
-| **Panel Self-Update** | Check version and update the panel (git pull + Docker rebuild) from the Settings page or via `make update` — no shell access required |
 | **Settings** | Configure all AzerothCore paths, MySQL credentials, SOAP endpoint, and connection test — entirely UI-driven; no `.env` edits required after initial setup |
+| **Backup & Restore** | Back up config files, databases, and server binaries/data to Local, SFTP/FTP, AWS S3, Google Drive, or OneDrive; restore from any archived backup with SSE progress streaming |
 | **Authentication** | JWT bearer tokens, single admin user, configurable session length |
 
 ---
@@ -74,18 +73,11 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
                │  host.docker.internal:8000
                ▼
 ┌─────────────────────────────────────┐
-│   FastAPI backend (port 8000)       │
+│         FastAPI (port 8000)         │
 │  REST API v1 · WebSocket logs       │
 │  SQLite (panel.db) · JWT auth       │
 └──────────────┬──────────────────────┘
-               │  Unix socket  /var/run/azerothpanel/ac-panel.sock
-               ▼
-┌─────────────────────────────────────┐
-│   ac_host_daemon.py  (HOST)         │  ← runs outside Docker
-│  owns worldserver / authserver PIDs │
-│  survives container restarts        │
-└──────────────┬──────────────────────┘
-               │  subprocess  +  MySQL / SOAP
+               │  direct process / file / MySQL access
                ▼
 ┌─────────────────────────────────────┐
 │     AzerothCore (host machine)      │
@@ -93,9 +85,7 @@ AzerothPanel wraps everything a server administrator needs — start/stop server
 └─────────────────────────────────────┘
 ```
 
-The backend container uses `network_mode: host` so it can reach MySQL and the SOAP interface on `127.0.0.1`. The frontend container reaches the backend via `host.docker.internal`.
-
-The **host daemon** (`ac_host_daemon.py`) is the key to persistence: it runs directly on the host (not inside any Docker container) and owns the AzerothCore server processes. Because it lives in the host's cgroup rather than the panel container's cgroup, the game servers keep running when Docker restarts the panel. The backend and daemon communicate via a bind-mounted Unix socket.
+The backend container runs with `network_mode: host` so it can reach AzerothCore processes, MySQL, and the SOAP interface that bind to `127.0.0.1` on the host. The frontend container communicates back to the backend via `host.docker.internal`.
 
 ---
 
@@ -136,25 +126,7 @@ AC_PATH=/opt/azerothcore
 PANEL_PORT=80
 ```
 
-### 3 — Start the host daemon (once, before Docker)
-
-The daemon must run on the host so AzerothCore servers survive Docker restarts:
-
-```bash
-# Option A: background process (until next reboot)
-make daemon-start
-
-# Option B: install as a systemd service (auto-starts on every boot — recommended)
-sudo make daemon-install
-```
-
-Verify it is running:
-
-```bash
-make daemon-status
-```
-
-### 4 — Start the panel
+### 3 — Start the panel
 
 ```bash
 make docker-up
@@ -164,7 +136,7 @@ docker compose up --build -d
 
 Open [http://localhost](http://localhost) (or the port you set in `PANEL_PORT`).
 
-### 5 — Initial setup
+### 4 — Initial setup
 
 Log in with the admin credentials from `backend/.env`, then navigate to **Settings** to configure:
 
@@ -203,29 +175,17 @@ See [docs/api.md](docs/api.md) for a complete endpoint reference.
 ## Make Targets
 
 ```
-make install           Install all dependencies (backend + frontend)
-make dev               Run backend + frontend in development mode (no Docker)
-make backend           Run only the FastAPI backend on :8000
-make frontend          Run only the Vite dev server on :5173
-make lint              TypeScript type-check
+make install        Install all dependencies (backend + frontend)
+make dev            Run backend + frontend in development mode (no Docker)
+make backend        Run only the FastAPI backend on :8000
+make frontend       Run only the Vite dev server on :5173
+make lint           TypeScript type-check
 
-make docker-build      Build Docker images (no cache)
-make docker-quick      Build Docker images (with cache)
-make docker-up         Build & start containers in background
-make docker-down       Stop and remove containers
-make docker-logs       Tail logs from all containers
-make docker-restart    Rebuild & restart all containers
-
-# Panel updates
-make version           Print current git tag, branch, commit, and upstream lag
-make update            git pull --rebase then rebuild & restart containers
-
-# Host Process Daemon — run on the HOST machine to keep AC servers alive
-make daemon-start      Launch daemon in background (until reboot)
-make daemon-stop       Stop the daemon
-make daemon-restart    Restart the daemon
-make daemon-status     Show daemon state + managed process list
-make daemon-install    Install daemon as a systemd service (auto-start on boot)
+make docker-build   Build Docker images (no cache)
+make docker-up      Build & start containers in background
+make docker-down    Stop and remove containers
+make docker-logs    Tail logs from all containers
+make docker-restart Rebuild & restart all containers
 ```
 
 ---
@@ -242,15 +202,12 @@ AzerothPanel/
 ├── backend/                   # FastAPI application
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── ac_host_daemon.py          # HOST daemon – owns worldserver/authserver
-│   ├── azerothpanel-daemon.service # systemd unit for the host daemon
 │   └── app/
 │       ├── main.py            # Application factory, CORS, lifespan
 │       ├── api/v1/
 │       │   ├── router.py      # Route aggregation
-│       │   └── endpoints/     # auth, server, instances, players, logs,
-│       │                      # database, installation, compilation,
-│       │                      # modules, configs, settings
+│       │   └── endpoints/     # auth, server, players, logs, database,
+│       │                      # installation, compilation, settings
 │       ├── api/websockets/
 │       │   └── logs.py        # Real-time log streaming
 │       ├── core/
@@ -263,11 +220,9 @@ AzerothPanel/
 │       └── services/
 │           ├── panel_settings.py         # Settings CRUD
 │           └── azerothcore/
-│               ├── server_manager.py     # Process control (daemon or direct)
-│               ├── instance_seeder.py    # Seeds default worldserver instance
+│               ├── server_manager.py     # Process control (start/stop)
 │               ├── compiler.py           # CMake build runner
 │               ├── installer.py          # Data installation steps
-│               ├── module_manager.py     # Module clone/remove/git-pull
 │               └── soap_client.py        # SOAP RPC client
 │
 └── frontend/                  # React + TypeScript
@@ -276,11 +231,11 @@ AzerothPanel/
     └── src/
         ├── pages/             # Dashboard, ServerControl, Players, Logs,
         │                      # DatabaseManager, Compilation, Installation,
-        │                      # ModuleManager, ConfigEditor, Settings, Login
+        │                      # Settings, Login
         ├── components/        # Layout (Header/Sidebar) + UI primitives
         ├── services/api.ts    # Axios instance + typed API helpers
         ├── store/index.ts     # Zustand global store
-        ├── hooks/             # useWebSocket, useServerStatus, useInstances
+        ├── hooks/             # useWebSocket, useServerStatus
         └── types/index.ts     # Shared TypeScript interfaces
 ```
 
@@ -292,12 +247,6 @@ AzerothPanel/
 - **Generate a strong `SECRET_KEY`**: `openssl rand -hex 32`
 - The panel is designed for **trusted private network use**. Do not expose port 80 to the public internet without additional protection (firewall, VPN, reverse-proxy with TLS).
 - SQL queries executed through the Database Manager are subject to a server-side read-only safety check (blocks `INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`).
-
----
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a full history of changes.
 
 ---
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     auth, server, instances, logs, players, database, installation,
-    compilation, settings, data_extraction, modules, configs,
+    compilation, settings, data_extraction, modules, configs, backup,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -19,4 +19,5 @@ api_router.include_router(settings.router)
 api_router.include_router(data_extraction.router)
 api_router.include_router(modules.router)
 api_router.include_router(configs.router)
+api_router.include_router(backup.router)
 

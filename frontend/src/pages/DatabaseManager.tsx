@@ -1,37 +1,19 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Play, Download, ChevronLeft, ChevronRight, Database } from 'lucide-react'
-import { dbApi, instancesApi } from '@/services/api'
+import { dbApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import type { DatabaseTarget, QueryResult, WorldServerInstance } from '@/types'
+import type { DatabaseTarget, QueryResult } from '@/types'
 
-const ALL_DATABASES: { value: DatabaseTarget; label: string; color: string }[] = [
-  { value: 'auth',        label: 'Auth',        color: 'text-blue-400' },
-  { value: 'characters',  label: 'Characters',  color: 'text-yellow-400' },
-  { value: 'world',       label: 'World',        color: 'text-green-400' },
-  { value: 'playerbots',  label: 'Playerbots',  color: 'text-purple-400' },
+const DATABASES: { value: DatabaseTarget; label: string; color: string }[] = [
+  { value: 'auth',       label: 'Auth',       color: 'text-blue-400' },
+  { value: 'characters', label: 'Characters', color: 'text-yellow-400' },
+  { value: 'world',      label: 'World',      color: 'text-green-400' },
 ]
 
 export default function DatabaseManager() {
   const [db, setDb] = useState<DatabaseTarget>('characters')
-  const [instanceId, setInstanceId] = useState<number | undefined>()
-
-  const instancesQuery = useQuery({
-    queryKey: ['worldserver-instances'],
-    queryFn: () => instancesApi.list().then((r) => r.data.instances as WorldServerInstance[]),
-    staleTime: 30_000,
-  })
-  const instances = instancesQuery.data ?? []
-
-  const availableQuery = useQuery({
-    queryKey: ['db-available'],
-    queryFn: () => dbApi.available().then((r) => r.data.databases as string[]),
-    staleTime: 60_000,
-  })
-  const DATABASES = ALL_DATABASES.filter(
-    (d) => !availableQuery.data || availableQuery.data.includes(d.value),
-  )
   const [selectedTable, setSelectedTable] = useState<string | null>(null)
   const [sql, setSql] = useState('')
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null)
@@ -39,18 +21,18 @@ export default function DatabaseManager() {
   const [browsePage, setBrowsePage] = useState(1)
 
   const tablesQuery = useQuery({
-    queryKey: ['db-tables', db, instanceId],
-    queryFn: () => dbApi.tables(db, instanceId).then((r) => r.data.tables as string[]),
+    queryKey: ['db-tables', db],
+    queryFn: () => dbApi.tables(db).then((r) => r.data.tables as string[]),
   })
 
   const browseQuery = useQuery({
-    queryKey: ['db-browse', db, selectedTable, browsePage, instanceId],
-    queryFn: () => dbApi.browse(db, selectedTable!, browsePage, undefined, 'asc', undefined, instanceId).then((r) => r.data as QueryResult),
+    queryKey: ['db-browse', db, selectedTable, browsePage],
+    queryFn: () => dbApi.browse(db, selectedTable!, browsePage).then((r) => r.data as QueryResult),
     enabled: !!selectedTable,
   })
 
   const queryMut = useMutation({
-    mutationFn: () => dbApi.query(db, sql, 500, instanceId).then((r) => r.data as QueryResult),
+    mutationFn: () => dbApi.query(db, sql).then((r) => r.data as QueryResult),
     onSuccess: (data) => { setQueryResult(data); setQueryError(null) },
     onError: (err: { response?: { data?: { detail?: string } } }) => {
       setQueryError(err.response?.data?.detail ?? 'Query failed')
@@ -59,7 +41,7 @@ export default function DatabaseManager() {
   })
 
   const backupMut = useMutation({
-    mutationFn: () => dbApi.backup(db, instanceId),
+    mutationFn: () => dbApi.backup(db),
   })
 
   const displayResult: QueryResult | null = selectedTable && !sql.trim() ? (browseQuery.data ?? null) : queryResult
@@ -80,7 +62,7 @@ export default function DatabaseManager() {
         {/* DB selector */}
         <div className="p-3 border-b border-panel-border space-y-1">
           {DATABASES.map((d) => (
-            <button key={d.value} onClick={() => { setDb(d.value); setSelectedTable(null); setQueryResult(null); setInstanceId(undefined) }}
+            <button key={d.value} onClick={() => { setDb(d.value); setSelectedTable(null); setQueryResult(null) }}
               className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
                 db === d.value ? 'bg-brand/20 text-brand-light' : 'text-panel-muted hover:text-white hover:bg-panel-hover'
               }`}>
@@ -89,27 +71,7 @@ export default function DatabaseManager() {
             </button>
           ))}
         </div>
-        {/* Instance selector (characters DB only) */}
-        {db === 'characters' && instances.length > 1 && (
-          <div className="p-3 border-b border-panel-border">
-            <label className="block text-xs text-panel-muted mb-1.5">Instance</label>
-            <select
-              value={instanceId ?? ''}
-              onChange={e => {
-                const v = e.target.value
-                setInstanceId(v === '' ? undefined : Number(v))
-                setSelectedTable(null)
-                setQueryResult(null)
-              }}
-              className="w-full bg-panel-bg border border-panel-border rounded px-2 py-1.5 text-xs text-white outline-none focus:border-brand"
-            >
-              <option value="">Global (default)</option>
-              {instances.map(i => (
-                <option key={i.id} value={i.id}>{i.display_name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+
         {/* Table list */}
         <div className="flex-1 overflow-y-auto p-2">
           {tablesQuery.isLoading && <p className="text-xs text-panel-muted p-2">Loading tables…</p>}

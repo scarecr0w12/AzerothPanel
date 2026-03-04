@@ -24,7 +24,7 @@ export interface ServerActionResponse {
   message: string
 }
 
-// ─── Worldserver Instances ───────────────────────────────────────────────────
+// ─── Worldserver Instances ────────────────────────────────────────────────────
 export interface WorldServerInstance {
   id: number
   display_name: string
@@ -99,6 +99,7 @@ export interface WorldServerProvisionRequest {
   instance_port?: number
   ra_port?: number
   realm_id?: number
+  realm_address?: string
   extra_overrides?: Record<string, string>
 }
 
@@ -189,7 +190,7 @@ export interface LogEntry {
 export type LogSource = 'worldserver' | 'authserver' | 'gm' | 'db_errors' | 'arena' | 'char'
 
 // ─── Database ─────────────────────────────────────────────────────────────────
-export type DatabaseTarget = 'auth' | 'characters' | 'world' | 'playerbots'
+export type DatabaseTarget = 'auth' | 'characters' | 'world'
 
 export interface QueryResult {
   columns: string[]
@@ -204,16 +205,6 @@ export interface QueryResult {
 }
 
 // ─── Build ───────────────────────────────────────────────────────────────────
-export interface BuildConfig {
-  build_type?: string
-  jobs?: number
-  cmake_extra?: string
-  /** Override the global AC_PATH for this build (empty/undefined → global) */
-  ac_path?: string
-  /** Override the global AC_BUILD_PATH for this build (empty/undefined → global) */
-  build_path?: string
-}
-
 export interface BuildStatus {
   running: boolean
   progress_percent?: number
@@ -310,4 +301,63 @@ export interface PanelSettings {
   // GitHub
   GITHUB_TOKEN: string
 }
+
+// ─── Backup & Restore ────────────────────────────────────────────────────────
+
+export type BackupDestType = 'local' | 'sftp' | 'ftp' | 's3' | 'gdrive' | 'onedrive'
+
+// Config shapes per destination type (all fields are strings to keep form-binding simple)
+export interface LocalConfig { path: string }
+export interface SftpConfig  { host: string; port: string; username: string; password: string; private_key: string; path: string }
+export interface FtpConfig   { host: string; port: string; username: string; password: string; path: string; tls: boolean }
+export interface S3Config    { access_key_id: string; secret_access_key: string; bucket: string; region: string; prefix: string }
+export interface GDriveConfig  { service_account_json: string; folder_id: string }
+export interface OneDriveConfig { client_id: string; client_secret: string; tenant_id: string; folder_path: string; drive_id: string }
+
+export interface BackupDestination {
+  id: number
+  name: string
+  type: BackupDestType
+  config: Record<string, unknown>
+  enabled: boolean
+  created_at: string
+}
+
+export interface BackupJob {
+  id: number
+  destination_id: number | null
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  include_configs: boolean
+  include_databases: boolean
+  include_server_files: boolean
+  filename: string
+  local_path: string
+  size_bytes: number
+  started_at: string
+  completed_at: string
+  error: string
+  notes: string
+}
+
+export interface BackupFile {
+  filename: string
+  size_bytes: number
+  modified: string
+}
+
+export interface BackupDestinationCreate {
+  name: string
+  type: BackupDestType
+  config: Record<string, unknown>
+  enabled: boolean
+}
+
+export interface BackupJobCreate {
+  destination_id?: number | null
+  include_configs: boolean
+  include_databases: boolean
+  include_server_files: boolean
+  notes: string
+}
+
 

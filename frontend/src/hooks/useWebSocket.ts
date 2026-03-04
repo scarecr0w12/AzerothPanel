@@ -30,8 +30,7 @@ export function useWebSocket(path: string, options: Options = {}) {
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host
-    const sep = path.includes('?') ? '&' : '?'
-    const url = `${proto}://${host}${path}${sep}token=${token}`
+    const url = `${proto}://${host}${path}?token=${token}`
 
     const ws = new WebSocket(url)
     wsRef.current = ws

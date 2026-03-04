@@ -143,6 +143,9 @@ class WorldServerProvisionRequest(BaseModel):
     instance_port: int = 8087        # InstanceserverPort
     ra_port: int = 3445              # Ra.Port
     realm_id: int = 2                # RealmID in worldserver.conf
+    # Address to write into acore_auth.realmlist for this realm.
+    # When empty/None the address is copied from the existing realm id=1 entry.
+    realm_address: Optional[str] = None
     extra_overrides: Optional[dict[str, str]] = None  # any extra key=value patches
 
 
@@ -395,6 +398,70 @@ class TestDbRequest(BaseModel):
     user: str
     password: str
     db_name: str
+
+
+# ---------------------------------------------------------------------------
+# Compilation
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Backup / Restore
+# ---------------------------------------------------------------------------
+class BackupDestinationCreate(BaseModel):
+    name: str
+    type: str   # "local" | "sftp" | "ftp" | "s3" | "gdrive" | "onedrive"
+    config: dict   # provider-specific config object
+    enabled: bool = True
+
+
+class BackupDestinationUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    config: Optional[dict] = None
+    enabled: Optional[bool] = None
+
+
+class BackupDestinationSchema(BaseModel):
+    id: int
+    name: str
+    type: str
+    config: dict
+    enabled: bool
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class BackupJobCreate(BaseModel):
+    destination_id: Optional[int] = None  # None → local default dir
+    include_configs: bool = True
+    include_databases: bool = True
+    include_server_files: bool = False
+    notes: str = ""
+
+
+class BackupJobSchema(BaseModel):
+    id: int
+    destination_id: Optional[int] = None
+    status: str
+    include_configs: bool
+    include_databases: bool
+    include_server_files: bool
+    filename: str
+    local_path: str
+    size_bytes: int
+    started_at: str
+    completed_at: str
+    error: str
+    notes: str
+
+    model_config = {"from_attributes": True}
+
+
+class RestoreRequest(BaseModel):
+    job_id: int          # restore from a completed BackupJob
+    restore_configs: bool = True
+    restore_databases: bool = True
+    restore_server_files: bool = False
 
 
 # ---------------------------------------------------------------------------

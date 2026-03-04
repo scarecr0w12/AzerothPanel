@@ -25,8 +25,8 @@ This guide covers every supported way to install and run AzerothPanel.
 | MySQL / MariaDB | MySQL 5.7 / MariaDB 10.3 | Already required by AzerothCore |
 | Docker Engine | 24.x | Only for the Docker path |
 | Docker Compose | v2.x (`docker compose`) | Only for the Docker path |
-| Python | 3.11+ | Required for the host daemon (`ac_host_daemon.py`) and the manual dev path |
-| Node.js | 20 LTS | **Only** for the manual (no-Docker) dev path |
+| Python | 3.11+ | **Only** for the manual (no-Docker) path |
+| Node.js | 20 LTS | **Only** for the manual (no-Docker) path |
 
 ### AzerothCore SOAP
 
@@ -93,39 +93,11 @@ PANEL_ADMIN_PASSWORD=change_me
 # SQLite panel database (leave as-is for Docker)
 PANEL_DB_URL=sqlite+aiosqlite:////data/panel.db
 
-# Host daemon TCP address (daemon runs on the host; backend uses network_mode: host)
-AC_DAEMON_HOST=127.0.0.1
-AC_DAEMON_PORT=7879
+# CORS (set false + populate CORS_ORIGINS for production hardening)
+CORS_ALLOW_ALL=true
 ```
 
-### 3. Start the host daemon
-
-> **Why this matters:** The panel backend runs inside a Docker container. If the
-> game servers were managed as container subprocesses they would be killed every
-> time you restart or update the panel. The host daemon runs outside Docker and
-> owns the AzerothCore processes, so they survive container restarts.
-
-```bash
-# Option A — quick background process (runs until next reboot)
-make daemon-start
-
-# Option B — install as a systemd service (auto-starts on every boot, recommended)
-sudo make daemon-install
-```
-
-Confirm the daemon is up:
-
-```bash
-make daemon-status
-# → Daemon running (PID 12345)
-# { "services": [{"name": "worldserver", "running": false}, ...] }
-```
-
-The daemon will now be the parent of any worldserver / authserver process that
-the panel starts. Restarting or rebuilding the Docker containers will not affect
-running game servers.
-
-### 4. Start the panel
+### 3. Start
 
 ```bash
 make docker-up
@@ -135,7 +107,7 @@ docker compose up --build -d
 
 The panel is available at `http://<your-host>:80` (or `PANEL_PORT`).
 
-### 5. First login
+### 4. First login
 
 1. Open the panel URL in your browser.
 2. Log in with the credentials from `PANEL_ADMIN_USER` / `PANEL_ADMIN_PASSWORD`.
@@ -155,7 +127,7 @@ The panel is available at `http://<your-host>:80` (or `PANEL_PORT`).
 
 5. Click **Save Settings** to apply. Changes take effect immediately — no restart required.
 
-### 6. Client Data Extraction
+### 5. Client Data Extraction
 
 Before starting the servers, you need client data files (DBC, Maps, VMaps, MMaps). Go to **Data Extraction** in the sidebar:
 
@@ -260,32 +232,9 @@ panel.example.com {
 
 ## Updating the panel
 
-There are three equivalent ways to update AzerothPanel to the latest version from GitHub.
-
-### Option A — Panel UI (requires daemon)
-
-1. Go to **Settings** in the sidebar.
-2. Scroll to the **Panel Update** section.
-3. Click **Check for Updates** to see how many commits behind origin you are.
-4. Click **Update Panel** to pull and rebuild. A live output log is shown;
-   the containers restart automatically when the build finishes.
-
-> The host daemon must be running (`make daemon-start` / `make daemon-install`)
-> for the UI update path to work, because `git pull` and `docker compose` must
-> run on the host, not inside the container.
-
-### Option B — Make target (on the host)
-
 ```bash
-make version   # optional: check how far behind origin you are
-make update    # git pull --rebase  →  docker compose up --build -d
-```
-
-### Option C — Manual steps
-
-```bash
-git pull --rebase
-docker compose up --build -d
+git pull
+make docker-restart
 ```
 
 Database migrations run automatically on startup via SQLAlchemy `create_all`.

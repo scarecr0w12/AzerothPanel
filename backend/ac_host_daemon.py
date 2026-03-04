@@ -53,6 +53,7 @@ import os
 import psutil
 import signal
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -108,6 +109,7 @@ def _save_state() -> None:
                 "pid": info["pid"],
                 "binary": info.get("binary", ""),
                 "cwd": info.get("cwd", ""),
+                "args": info.get("args", []),
                 "start_time": info.get("start_time", 0.0),
             }
     try:
@@ -144,6 +146,7 @@ def _load_state() -> None:
                     "pid": pid,
                     "binary": info.get("binary", ""),
                     "cwd": info.get("cwd", ""),
+                    "args": info.get("args", []),
                     "start_time": info.get("start_time", 0.0),
                 }
             except psutil.NoSuchProcess:
@@ -210,6 +213,13 @@ async def _do_start(name: str, binary: str, cwd: str, args: list[str] | None = N
     env = os.environ.copy()
 
     logger.info(f"Starting {name}: binary={binary!r}  cwd={effective_cwd!r}  args={extra_args!r}")
+
+    # Capture stderr to a temp file so we can surface startup errors.
+    stderr_file = tempfile.NamedTemporaryFile(
+        mode="w+", suffix=".stderr", prefix=f"acdaemon-{name}-", delete=False
+    )
+    stderr_path = stderr_file.name
+
     try:
         proc = await asyncio.create_subprocess_exec(
             binary,
@@ -218,10 +228,16 @@ async def _do_start(name: str, binary: str, cwd: str, args: list[str] | None = N
             env=env,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=stderr_file,
             start_new_session=True,
         )
+        stderr_file.close()
     except Exception as exc:
+        stderr_file.close()
+        try:
+            os.unlink(stderr_path)
+        except Exception:
+            pass
         logger.error(f"Failed to start {name}: {exc}")
         return {"success": False, "message": f"Failed to start {name}: {exc}"}
 
@@ -233,6 +249,7 @@ async def _do_start(name: str, binary: str, cwd: str, args: list[str] | None = N
         "pid": pid,
         "binary": binary,
         "cwd": effective_cwd,
+        "args": extra_args,
         "start_time": start_time,
     }
     _save_state()
@@ -242,8 +259,31 @@ async def _do_start(name: str, binary: str, cwd: str, args: list[str] | None = N
     if not psutil.pid_exists(pid):
         _registry.pop(name, None)
         _save_state()
-        logger.error(f"{name} (PID {pid}) exited immediately")
-        return {"success": False, "message": f"{name} exited immediately after start"}
+
+        # Read the last 10 lines of stderr for a useful error message.
+        error_msg = f"{name} exited immediately after start"
+        try:
+            with open(stderr_path) as fh:
+                content = fh.read().strip()
+            if content:
+                lines = content.split("\n")[-15:]
+                error_msg = f"{name} failed to start: " + " | ".join(lines)
+                logger.error(f"{name} stderr: {content}")
+        except Exception:
+            pass
+        finally:
+            try:
+                os.unlink(stderr_path)
+            except Exception:
+                pass
+
+        return {"success": False, "message": error_msg}
+
+    # Process is alive – clean up the stderr temp file.
+    try:
+        os.unlink(stderr_path)
+    except Exception:
+        pass
 
     logger.info(f"{name} started successfully (PID {pid})")
     return {"success": True, "message": f"{name} started (PID {pid})", "pid": pid}

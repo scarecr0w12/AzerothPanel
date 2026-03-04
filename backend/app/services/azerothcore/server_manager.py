@@ -446,22 +446,63 @@ async def restart_authserver() -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 async def _resolve_binary_and_cwd(
-    binary_path: str, working_dir: str
+    binary_path: str, working_dir: str, process_name: str = "worldserver"
 ) -> tuple[str, str]:
     """
     Resolve the binary path and CWD for an instance.
 
-    If either is empty the global AC_BINARY_PATH setting is used as the base:
-      - binary  → <AC_BINARY_PATH>/worldserver
-      - cwd     → <AC_BINARY_PATH>
+    If ``binary_path`` is empty:
+      - For the default ``worldserver`` instance  → <AC_BINARY_PATH>/worldserver
+      - For any other instance (e.g. "ptr")       → <AC_BINARY_PATH>/<process_name>
+        This means a symlink named <process_name> must exist (or be auto-created
+        by ``_ensure_instance_symlink``) so the OS reports a unique process name.
     """
     from app.services.panel_settings import get_settings_dict
     s = await get_settings_dict()
     base = s.get("AC_BINARY_PATH", "/opt/azerothcore/bin")
 
-    resolved_binary = binary_path.strip() or str(Path(base) / "worldserver")
+    if binary_path.strip():
+        resolved_binary = binary_path.strip()
+    else:
+        # Use the process_name as the binary filename so each instance has its
+        # own uniquely-named executable (symlink) for OS-level identification.
+        resolved_binary = str(Path(base) / process_name)
+
     resolved_cwd = working_dir.strip() or base
     return resolved_binary, resolved_cwd
+
+
+async def _ensure_instance_symlink(binary: str, process_name: str) -> None:
+    """
+    Ensure that *binary* exists as a file or symlink.
+
+    If *binary* doesn't exist yet but a sibling ``worldserver`` binary does,
+    create a symlink so the OS reports a unique process name for status tracking.
+    This is a safety net for instances whose ``generate-config`` was not called
+    (or whose symlink was accidentally deleted).
+    """
+    b = Path(binary)
+    if b.exists():
+        return  # nothing to do
+
+    if process_name == "worldserver":
+        return  # default instance – no symlink needed
+
+    base = b.parent / "worldserver"
+    if not base.exists():
+        logger.warning(
+            "Cannot create symlink %s -> %s: base worldserver binary not found",
+            b, base,
+        )
+        return
+
+    try:
+        if b.is_symlink():
+            b.unlink()
+        b.symlink_to(base)
+        logger.info("Auto-created symlink %s -> %s for instance %s", b, base, process_name)
+    except Exception as exc:
+        logger.warning("Could not auto-create symlink %s -> %s: %s", b, base, exc)
 
 
 async def start_instance(
@@ -471,11 +512,21 @@ async def start_instance(
     conf_path: str = "",
 ) -> tuple[bool, str]:
     """Start an arbitrary worldserver instance identified by *process_name*."""
-    binary, cwd = await _resolve_binary_and_cwd(binary_path, working_dir)
+    binary, cwd = await _resolve_binary_and_cwd(binary_path, working_dir, process_name)
+
+    # Ensure a uniquely-named binary/symlink exists so the daemon and psutil
+    # can identify this instance's process by name, not just PID.
+    await _ensure_instance_symlink(binary, process_name)
+
     # Pass -c <conf> when a custom conf file is specified
     extra_args = ["-c", conf_path.strip()] if conf_path.strip() else []
+
+    logger.info(
+        "start_instance: process_name=%r binary=%r cwd=%r conf=%r args=%r",
+        process_name, binary, cwd, conf_path, extra_args,
+    )
+
     if await _daemon_available():
-        logger.info(f"[daemon] Starting instance '{process_name}'  binary={binary!r}  args={extra_args!r}")
         resp = await _daemon_send(
             {
                 "cmd": "start",

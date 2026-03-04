@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Server, ScrollText, Users, Database,
   Download, Hammer, LogOut, ChevronLeft, ChevronRight, Shield, Settings,
-  HardDrive, Package, FileText,
+  HardDrive, Package, FileText, Archive,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useUIStore, useAuthStore } from '@/store'
@@ -48,6 +48,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Configure',
     items: [
       { to: '/configs',  icon: FileText, label: 'Config Files' },
+      { to: '/backup',   icon: Archive,  label: 'Backup & Restore' },
       { to: '/settings', icon: Settings, label: 'Settings' },
     ],
   },

@@ -5,6 +5,114 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] – 2026-03-04
+
+### Summary
+
+| Area | Change |
+|---|---|
+| **Backup & Restore** | Full backup and restore system supporting Local filesystem, SFTP/FTP, AWS S3, Google Drive, and OneDrive as destinations; backs up AzerothCore config files, all three game databases, and server binary/data files; secondary worldserver instance config files (arbitrary paths) are correctly included |
+
+---
+
+### Added – Backup & Restore System
+
+A complete backup and restore subsystem has been added to AzerothPanel, covering all critical server assets and supporting five remote storage providers.
+
+#### Backend — data model
+
+##### `backend/app/models/panel_models.py`
+- New `BackupDestination` ORM model: `id`, `name`, `type` (`local` / `sftp` / `ftp` / `s3` / `gdrive` / `onedrive`), `config` (JSON blob), `enabled` (Boolean), `created_at`.
+- New `BackupJob` ORM model: `id`, `destination_id`, `status` (`pending` / `running` / `completed` / `failed`), `include_configs`, `include_databases`, `include_server_files`, `filename`, `local_path`, `size_bytes`, `started_at`, `completed_at`, `error`, `notes`.
+- `Boolean` added to SQLAlchemy imports.
+
+##### `backend/app/core/database.py`
+- `run_panel_db_migrations()` v1.3 block: `CREATE TABLE IF NOT EXISTS backup_destinations` and `CREATE TABLE IF NOT EXISTS backup_jobs` — safe on every startup.
+
+##### `backend/app/models/schemas.py`
+- New schemas: `BackupDestinationCreate`, `BackupDestinationUpdate`, `BackupDestinationSchema`, `BackupJobCreate`, `BackupJobSchema`, `RestoreRequest`.
+
+#### Backend — service
+
+##### `backend/app/services/backup/backup_manager.py`  *(new file, ~1 050 lines)*
+Six storage-provider classes, each implementing `upload()`, `download()`, `delete()`, `list_files()`, and `test()`:
+
+| Class | Provider | Key dependency |
+|---|---|---|
+| `LocalStorage` | Local filesystem | stdlib `pathlib` |
+| `SftpStorage` | SFTP | `paramiko` |
+| `FtpStorage` | FTP/FTPS | stdlib `ftplib` |
+| `S3Storage` | AWS S3 / S3-compatible | `boto3` |
+| `GoogleDriveStorage` | Google Drive | `google-api-python-client`, `google-auth` |
+| `OneDriveStorage` | Microsoft OneDrive | `msal`, `httpx` |
+
+Core functions:
+
+- `run_backup_sync(job_id, dest_type, dest_config, include_configs, include_databases, include_server_files, settings, progress_callback, instance_conf_files=None)` — builds a `.tar.gz` archive containing:
+  - `configs/` — global `AC_CONF_PATH/*.conf` files.
+  - `configs/instances/{safe_name}/{filename}` — per-instance worldserver config files from arbitrary absolute paths (new in v1.3).
+  - `databases/` — `mysqldump` of auth, world, and characters databases.
+  - `server/` — AzerothCore binaries and data directory.
+- `run_restore_sync(...)` — extracts a `.tar.gz` archive; global configs go to `AC_CONF_PATH`, per-instance configs are written back to their original absolute paths.
+- `run_backup_stream(...)` / `run_restore_stream(...)` — async SSE wrappers using `asyncio.Queue` + `run_in_executor`; both accept `instance_conf_files`.
+- `_get_storage(dest_type, config)` factory returns the appropriate provider instance.
+
+##### `backend/requirements.txt`
+- Added: `paramiko==3.5.0`, `boto3==1.35.86`, `google-auth==2.37.0`, `google-api-python-client==2.157.0`, `msal==1.31.1`.
+
+#### Backend — API
+
+##### `backend/app/api/v1/endpoints/backup.py`  *(new file, 19 endpoints)*
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/backup/destinations` | List all backup destinations |
+| `POST` | `/backup/destinations` | Create a new destination |
+| `GET` | `/backup/destinations/{id}` | Get a single destination |
+| `PUT` | `/backup/destinations/{id}` | Update a destination |
+| `DELETE` | `/backup/destinations/{id}` | Delete a destination |
+| `POST` | `/backup/destinations/{id}/test` | Test connectivity / credentials |
+| `GET` | `/backup/destinations/{id}/files` | List archive files stored at a destination |
+| `GET` | `/backup/jobs` | List all backup jobs |
+| `GET` | `/backup/jobs/{id}` | Get a single job |
+| `DELETE` | `/backup/jobs/{id}` | Delete a job record |
+| `GET` | `/backup/jobs/{id}/files` | List files associated with a job |
+| `DELETE` | `/backup/jobs/{id}/files/{filename}` | Delete a specific archive file |
+| `POST` | `/backup/run` | Start a new backup (SSE stream) |
+| `POST` | `/backup/restore` | Restore from a backup job (SSE stream) |
+
+`POST /backup/run` creates a `BackupJob` record (status=running), queries all `WorldServerInstance` rows that have a non-empty `conf_path`, and passes the resulting `(display_name, conf_path)` pairs through `run_backup_stream` so every secondary worldserver's config is archived.
+
+`POST /backup/restore` validates the job is `completed` before streaming; queries instance conf paths and passes them to `run_restore_stream` so each file is written back to its original absolute path.
+
+##### `backend/app/api/v1/router.py`
+- `backup` router imported and registered under `/api/v1`.
+
+#### Frontend
+
+##### `frontend/src/types/index.ts`
+- New types: `BackupDestType` (union), `LocalConfig`, `SftpConfig`, `FtpConfig`, `S3Config`, `GDriveConfig`, `OneDriveConfig`, `BackupDestination`, `BackupJob`, `BackupFile`, `BackupDestinationCreate`, `BackupJobCreate`.
+
+##### `frontend/src/services/api.ts`
+- New `backupApi` object with methods: `listDestinations`, `createDestination`, `getDestination`, `updateDestination`, `deleteDestination`, `testDestination`, `listDestinationFiles`, `listJobs`, `getJob`, `deleteJob`, `listJobFiles`, `deleteJobFile`, `runBackup` (raw `fetch` for SSE), `restore` (raw `fetch` for SSE).
+
+##### `frontend/src/pages/BackupManager.tsx`  *(new file, ~530 lines)*
+Three-tab interface:
+
+| Tab | Contents |
+|---|---|
+| **Destinations** | CRUD list with connection test; `DestinationModal` with type-selector and dynamic provider config fields |
+| **Create Backup** | Destination picker, include checkboxes (Configs / Databases / Server Files), SSE log panel |
+| **Job History** | Paginated job list with status badges; inline restore modal with options; expandable per-job file browser; delete job / delete file actions |
+
+##### `frontend/src/App.tsx`
+- `BackupManager` imported; `/backup` route added.
+
+##### `frontend/src/components/layout/Sidebar.tsx`
+- `Archive` icon from `lucide-react`; **Backup & Restore** nav item added to the Configure group.
+
+---
+
 ## [Unreleased] – 2026-03-02
 
 ### Summary

@@ -16,6 +16,7 @@ import DataExtraction from '@/pages/DataExtraction'
 import Settings from '@/pages/Settings'
 import ModuleManager from '@/pages/ModuleManager'
 import ConfigEditor from '@/pages/ConfigEditor'
+import BackupManager from '@/pages/BackupManager'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="data-extraction" element={<DataExtraction />} />
           <Route path="modules" element={<ModuleManager />} />
           <Route path="configs" element={<ConfigEditor />} />
+          <Route path="backup" element={<BackupManager />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 

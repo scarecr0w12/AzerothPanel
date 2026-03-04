@@ -375,3 +375,49 @@ export const dataExtractionApi = {
   },
 }
 
+// ─── Backup & Restore ─────────────────────────────────────────────────────────
+export const backupApi = {
+  // Destinations
+  listDestinations: () => api.get('/backup/destinations'),
+  createDestination: (data: import('@/types').BackupDestinationCreate) =>
+    api.post('/backup/destinations', data),
+  getDestination: (id: number) => api.get(`/backup/destinations/${id}`),
+  updateDestination: (id: number, data: Partial<import('@/types').BackupDestinationCreate>) =>
+    api.put(`/backup/destinations/${id}`, data),
+  deleteDestination: (id: number) => api.delete(`/backup/destinations/${id}`),
+  testDestination: (id: number) => api.post(`/backup/destinations/${id}/test`),
+  listDestinationFiles: (id: number) => api.get(`/backup/destinations/${id}/files`),
+
+  // Jobs
+  listJobs: (limit = 50, offset = 0) =>
+    api.get('/backup/jobs', { params: { limit, offset } }),
+  getJob: (id: number) => api.get(`/backup/jobs/${id}`),
+  deleteJob: (id: number) => api.delete(`/backup/jobs/${id}`),
+  listJobFiles: (jobId: number) => api.get(`/backup/jobs/${jobId}/files`),
+  deleteJobFile: (jobId: number, filename: string) =>
+    api.delete(`/backup/jobs/${jobId}/files/${filename}`),
+
+  // Operations (SSE – use raw fetch for streaming)
+  runBackup: (data: import('@/types').BackupJobCreate, signal?: AbortSignal) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/backup/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+      signal,
+    })
+  },
+  restore: (
+    jobId: number,
+    opts: { restore_configs: boolean; restore_databases: boolean; restore_server_files: boolean },
+    signal?: AbortSignal,
+  ) => {
+    const token = localStorage.getItem('ap_token') ?? ''
+    return fetch('/api/v1/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ job_id: jobId, ...opts }),
+      signal,
+    })
+  },
+}

@@ -7,10 +7,11 @@ import {
   useInstances, useStartInstance, useStopInstance, useRestartInstance,
   useCreateInstance, useUpdateInstance, useDeleteInstance,
 } from '@/hooks/useServerStatus'
-import { instancesApi } from '@/services/api'
+import { instancesApi, settingsApi } from '@/services/api'
 import { Card, CardHeader } from '@/components/ui/Card'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Button from '@/components/ui/Button'
+import { toast } from '@/components/ui/Toast'
 import type {
   WorldServerInstance,
   WorldServerInstanceCreate,
@@ -343,6 +344,13 @@ function InstanceModal({
 }) {
   const isEdit = !!initial
 
+  // Load panel settings to derive config path defaults
+  const { data: settingsData } = useQuery({
+    queryKey: ['panel-settings'],
+    queryFn: () => settingsApi.get().then(r => r.data as Record<string, string>),
+    staleTime: 300_000,
+  })
+
   // Step 1 — basic fields
   const [step, setStep] = useState(1)
   const [basic, setBasic] = useState<ModalBasicData>({
@@ -378,16 +386,25 @@ function InstanceModal({
     instance_port: 8087,
     ra_port: 3445,
     realm_id: 2,
+    realm_address: '',
   })
 
-  // Auto-fill conf_output_path when processName is set and path is still default
+  // Auto-fill conf_output_path from AC_CONF_PATH setting when process name changes
   function handleProcessNameChange(v: string) {
     setBasic(b => ({ ...b, process_name: v }))
-    setProvision(p =>
-      p.conf_output_path === '' || p.conf_output_path.startsWith('/opt/azerothcore/etc/worldserver-')
-        ? { ...p, conf_output_path: `/opt/azerothcore/etc/worldserver-${v}.conf` }
+    // Derive conf dir from the panel setting (AC_CONF_PATH) so it matches the
+    // actual installation layout instead of using a hardcoded path.
+    const confDir = settingsData?.AC_CONF_PATH?.replace(/\/$/, '') ??
+      (settingsData?.AC_WORLDSERVER_CONF
+        ? settingsData.AC_WORLDSERVER_CONF.replace(/\/[^/]+$/, '')
+        : '/opt/azerothcore/etc')
+    setProvision(p => {
+      const isDefault = p.conf_output_path === '' ||
+        /worldserver-[a-zA-Z0-9_-]*\.conf$/.test(p.conf_output_path)
+      return isDefault
+        ? { ...p, conf_output_path: `${confDir}/worldserver-${v}.conf` }
         : p
-    )
+    })
   }
 
   function handleStep1Submit(e: React.FormEvent) {
@@ -613,6 +630,17 @@ function InstanceModal({
                     placeholder="AzerothCore 2" className={inputCls} />
                 </div>
 
+                <div>
+                  <label className={labelCls}>Realm Address (blank → copy from main realm)</label>
+                  <input value={provision.realm_address ?? ''}
+                    onChange={e => setProvision(p => ({ ...p, realm_address: e.target.value || undefined }))}
+                    placeholder="10.10.20.132 — leave blank to inherit" className={inputCls} />
+                  <p className="mt-1 text-xs text-panel-muted">
+                    IP/hostname written to <code className="text-brand">realmlist</code>.
+                    Leave blank to copy from the main realm entry.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Realm ID</label>
@@ -692,7 +720,9 @@ export default function ServerControl() {
       onSuccess: async (created) => {
         if (provision) {
           try {
-            await instancesApi.generateConfig(created.id, provision)
+            const result = await instancesApi.generateConfig(created.id, provision)
+            const msg = (result.data as { message?: string }).message ?? 'Config generated successfully.'
+            toast(msg, 'success')
             // Invalidate instances so the new conf_path shows up immediately
             await queryClient.invalidateQueries({ queryKey: ['worldserver-instances'] })
           } catch (e: unknown) {

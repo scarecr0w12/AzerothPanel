@@ -68,7 +68,7 @@ Authorization: Bearer eyJ...
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/status` | Worldserver & authserver running status, PID, CPU %, memory. Queries the host daemon when available; falls back to psutil when daemon is absent. |
+| `GET` | `/status` | Worldserver & authserver running status, online player count |
 | `POST` | `/worldserver/start` | Start the worldserver process |
 | `POST` | `/worldserver/stop` | Stop the worldserver process |
 | `POST` | `/worldserver/restart` | Restart the worldserver process |
@@ -93,73 +93,6 @@ Response:
 
 ---
 
-### Worldserver Instances — `/api/v1/server/instances`
-
-Manage multiple independent worldserver processes from a single panel. Each instance has its own binary path, working directory, and `worldserver.conf`.
-
-![Server Control page with instances](screenshots/server_control.png)
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/server/instances` | List all instances with live process status |
-| `POST` | `/server/instances` | Create a new instance |
-| `GET` | `/server/instances/{id}` | Get one instance with live status |
-| `PUT` | `/server/instances/{id}` | Update instance metadata |
-| `DELETE` | `/server/instances/{id}` | Stop (if running) then delete the instance |
-| `POST` | `/server/instances/{id}/start` | Start the instance's worldserver process |
-| `POST` | `/server/instances/{id}/stop` | Stop the instance's worldserver process |
-| `POST` | `/server/instances/{id}/restart` | Restart the instance's worldserver process |
-| `POST` | `/server/instances/{id}/command` | Send a GM console command via the daemon stdin pipe |
-| `GET` | `/server/instances/{id}/config` | Read this instance's `worldserver.conf`; falls back to global `AC_WORLDSERVER_CONF` |
-| `PUT` | `/server/instances/{id}/config` | Write updated content to this instance's `worldserver.conf` |
-| `POST` | `/server/instances/{id}/generate-config` | Copy the global conf as a template, patch ports/realm/ID, write to `conf_output_path` |
-
-#### `POST /api/v1/server/instances` — Create instance
-
-```json
-{
-  "display_name": "PTR Realm",
-  "process_name": "worldserver-ptr",
-  "binary_path": "/opt/azerothcore/bin/worldserver-ptr",
-  "working_dir": "/opt/azerothcore/bin",
-  "notes": "Public test realm",
-  "ac_path": "/opt/azerothcore-ptr",
-  "build_path": "/opt/azerothcore-ptr/build",
-  "char_db_host": "127.0.0.1",
-  "char_db_port": "3306",
-  "char_db_user": "acore",
-  "char_db_password": "acore",
-  "char_db_name": "acore_characters_ptr",
-  "soap_host": "127.0.0.1",
-  "soap_port": "7879",
-  "soap_user": "gm",
-  "soap_password": "gmpassword"
-}
-```
-
-All per-instance override fields (`ac_path`, `build_path`, `char_db_*`, `soap_*`) are optional and default to `""`.  An empty value means "use the global setting from the Settings page" — single-realm setups require no changes.
-
-#### `POST /api/v1/server/instances/{id}/command` — Send a GM command
-
-When the instance has `soap_user` / `soap_password` configured, the command is routed through that instance's SOAP endpoint. Otherwise it falls back to the daemon stdin pipe.
-
-#### `POST /api/v1/server/instances/{id}/generate-config` — Provision a conf file
-
-```json
-{
-  "conf_output_path": "/opt/azerothcore/etc/worldserver-ptr.conf",
-  "realm_name": "PTR",
-  "realm_id": 2,
-  "worldserver_port": 8086,
-  "instance_port": 8086,
-  "ra_port": 3444
-}
-```
-
-The endpoint copies the global `worldserver.conf` and patches the specified key=value pairs in-place (including `RealmName` and a unique per-instance `LogsDir`).  The instance's `conf_path`, `binary_path`, and `working_dir` are updated in the database.  If `AC_BINARY_PATH` is configured and `process_name` differs from `"worldserver"`, `binary_path` is set to `<AC_BINARY_PATH>/<process_name>` automatically.
-
----
-
 ### Player Management — `/api/v1/players`
 
 ![Player Management page](screenshots/players.png)
@@ -175,20 +108,6 @@ The endpoint copies the global `worldserver.conf` and patches the specified key=
 | `POST` | `/kick/{player_name}` | Kick an online player |
 | `POST` | `/announce` | Send a message to all online players |
 | `POST` | `/modify` | Modify a player's stats (level, gold, etc.) |
-
-#### `GET /api/v1/players/characters`
-
-Query parameters:
-
-| Param | Type | Description |
-|---|---|---|
-| `search` | `string` | Filter by character name |
-| `page` | `int` | Page number (default `1`) |
-| `page_size` | `int` | Results per page (default `50`) |
-| `online_only` | `bool` | Return only online characters (default `false`) |
-| `instance_id` | `int` | Scope to a specific worldserver instance's character database |
-
-`GET /characters/{guid}` also accepts `instance_id` as a query parameter.
 
 #### `GET /api/v1/players/accounts`
 
@@ -229,12 +148,7 @@ Query parameters:
 
 | Param | Type | Description |
 |---|---|---|
-| `lines` | `int` | Number of tail lines to return (default `500`) |
-| `level` | `string` | Filter by log level (`ERROR`, `WARN`, `INFO`, `DEBUG`) |
-| `search` | `string` | Full-text search pattern (regex supported) |
-| `instance_id` | `int` | Scope to a specific worldserver instance's log directory |
-
-`/sources`, `/{source}/size`, and `/{source}/download` also accept `instance_id`.
+| `lines` | `int` | Number of tail lines to return (default `100`) |
 
 ---
 
@@ -244,33 +158,17 @@ Query parameters:
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/available` | List queryable database targets (`auth`, `world`, `characters`; `playerbots` when `mod-playerbots` is installed) |
-| `GET` | `/tables/{database}` | List tables in a database (`auth`, `world`, `characters`, `playerbots`) |
+| `GET` | `/tables/{database}` | List tables in a database (`auth`, `world`, `characters`) |
 | `POST` | `/query` | Execute a SQL query (read-only safety check enforced) |
 | `GET` | `/table/{database}/{table_name}` | Browse a table with pagination |
 | `POST` | `/backup` | Initiate a database backup (mysqldump) |
-
-> **Playerbots database**: The `playerbots` target is only included in `/available` (and accepted by all other endpoints) when `{AC_PATH}/modules/mod-playerbots` exists on disk. Requests using `playerbots` when the module is absent return HTTP 404.
-
-#### Per-instance characters database
-
-All database endpoints accept an optional `instance_id` query parameter (or request-body field for POST endpoints).  When supplied and the target database is `characters`, the panel uses that instance's `char_db_*` credential overrides instead of the global `AC_CHAR_DB_*` settings.  All other databases always use global credentials.
-
-#### `GET /api/v1/database/tables/{database}`
-
-Query parameters:
-
-| Param | Type | Description |
-|---|---|---|
-| `instance_id` | `int` | Scope `characters` DB to a specific worldserver instance |
 
 #### `POST /api/v1/database/query`
 
 ```json
 {
-  "database": "characters",
-  "query": "SELECT guid, name, level FROM characters LIMIT 10",
-  "instance_id": 2
+  "database": "world",
+  "query": "SELECT entry, name FROM creature_template LIMIT 10"
 }
 ```
 
@@ -304,22 +202,14 @@ The `/run` endpoint uses **Server-Sent Events (SSE)**. The client receives a str
 | `GET` | `/status` | Current or last build status (idle / running / success / failed) |
 | `POST` | `/build` | Trigger a CMake build (SSE stream of compiler output) |
 
-> **Pull Latest Source** — The Compilation page also exposes a "Pull Latest Source" button that calls `POST /modules/update-azerothcore` (see Module Manager below). The rationale is that pulling updated source and then rebuilding are sequential steps that belong on the same page.
-
 #### `POST /api/v1/compilation/build`
 
 ```json
 {
-  "build_type": "RelWithDebInfo",
-  "jobs": 4,
-  "cmake_extra": "-DTOOLS_BUILD=all",
-  "ac_path": "/opt/azerothcore-ptr",
-  "build_path": "/opt/azerothcore-ptr/build",
-  "process_name": "worldserver-ptr"
+  "cmake_options": "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+  "cores": 4
 }
 ```
-
-`ac_path` and `build_path` override the global AC_PATH / AC_BUILD_PATH for this build only. When `process_name` is set (and differs from `"worldserver"`), a `worldserver-ptr` symlink is created alongside the `worldserver` binary in the build's `bin/` directory — enabling the daemon to track the process independently.
 
 The response is an **SSE stream** of build output lines.
 
@@ -402,8 +292,6 @@ The response is an **SSE stream** of extraction progress lines.
 | `GET` | `` | Get all current panel settings |
 | `PUT` | `` | Update panel settings |
 | `POST` | `/test-db` | Test a MySQL connection with the supplied credentials |
-| `GET` | `/panel-version` | Return current git tag, branch, commit hash, and how many commits HEAD is behind `origin/HEAD`. Requires the host daemon. |
-| `POST` | `/update-panel` | Pull the latest code from GitHub and rebuild + restart Docker containers via the host daemon (long-running, up to 660 s). Returns `{"success": bool, "output": str}`. |
 
 #### `GET /api/v1/settings`
 
@@ -431,14 +319,9 @@ Response:
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/catalogue` | List available modules from the AzerothCore GitHub catalogue |
-| `GET` | `/installed` | List locally installed modules (`ac_path` query param to target a specific installation) |
-| `POST` | `/install` | Clone and install a module (`ac_path` in body to target a specific installation) |
-| `POST` | `/update-azerothcore` | `git pull` the AzerothCore source tree (`{"ac_path": "..."}` body to target a specific installation) (SSE stream) |
-| `POST` | `/update-all` | `git pull` all installed git-tracked modules (`{"ac_path": "..."}` body) (SSE stream) |
-| `POST` | `/{module_name}/update` | `git pull` a single installed module (`ac_path` query param) (SSE stream) |
-| `DELETE` | `/{module_name}` | Remove an installed module (`ac_path` query param to target a specific installation) |
-
-All path-mutating endpoints accept an `ac_path` override so you can manage modules for a secondary AC installation without changing the global Settings.
+| `GET` | `/installed` | List locally installed modules |
+| `POST` | `/install` | Clone and install a module by repository slug |
+| `DELETE` | `/{module_name}` | Remove an installed module |
 
 ---
 
@@ -454,32 +337,106 @@ All path-mutating endpoints accept an `ac_path` override so you can manage modul
 
 ---
 
+### Backup & Restore — `/api/v1/backup`
+
+#### Destinations
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/destinations` | List all configured backup destinations |
+| `POST` | `/destinations` | Create a new backup destination |
+| `GET` | `/destinations/{id}` | Get a single destination |
+| `PUT` | `/destinations/{id}` | Update a destination |
+| `DELETE` | `/destinations/{id}` | Delete a destination |
+| `POST` | `/destinations/{id}/test` | Test connectivity / credentials |
+| `GET` | `/destinations/{id}/files` | List archive files stored at the destination |
+
+##### Supported destination types
+
+| `type` | Provider | Required config fields |
+|---|---|---|
+| `local` | Local filesystem | `path` |
+| `sftp` | SFTP | `host`, `port`, `username`, `password` (or `private_key`), `path` |
+| `ftp` | FTP / FTPS | `host`, `port`, `username`, `password`, `path`, `use_tls` |
+| `s3` | AWS S3 / S3-compatible | `bucket`, `region`, `access_key`, `secret_key`, `prefix` (opt), `endpoint_url` (opt) |
+| `gdrive` | Google Drive | `credentials_json`, `folder_id` |
+| `onedrive` | Microsoft OneDrive | `client_id`, `client_secret`, `tenant_id`, `folder_path` |
+
+##### `POST /api/v1/backup/destinations`
+
+```json
+{
+  "name": "Daily S3",
+  "type": "s3",
+  "config": {
+    "bucket": "my-ac-backups",
+    "region": "us-east-1",
+    "access_key": "AKIA...",
+    "secret_key": "..."
+  },
+  "enabled": true
+}
+```
+
+#### Jobs
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/jobs` | List all backup jobs |
+| `GET` | `/jobs/{id}` | Get a single job |
+| `DELETE` | `/jobs/{id}` | Delete a job record |
+| `GET` | `/jobs/{id}/files` | List archive files associated with a job |
+| `DELETE` | `/jobs/{id}/files/{filename}` | Delete a specific archive file |
+
+#### Run & Restore (SSE streams)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/run` | Start a new backup (SSE stream) |
+| `POST` | `/restore` | Restore from a completed backup job (SSE stream) |
+
+##### `POST /api/v1/backup/run`
+
+```json
+{
+  "destination_id": 1,
+  "include_configs": true,
+  "include_databases": true,
+  "include_server_files": false,
+  "notes": "pre-update snapshot"
+}
+```
+
+The response is an **SSE stream** of progress lines. A `BackupJob` record is created immediately (status `running`) and updated to `completed` or `failed` when the stream ends.  Config files from secondary worldserver instances (stored at arbitrary paths) are automatically included under `configs/instances/{name}/`.
+
+##### `POST /api/v1/backup/restore`
+
+```json
+{
+  "job_id": 42,
+  "restore_configs": true,
+  "restore_databases": true,
+  "restore_server_files": false
+}
+```
+
+The response is an **SSE stream** of restore progress. The job must be in `completed` status. Per-instance config files are written back to their original absolute paths.
+
+---
+
 ## WebSocket — Live Log Streaming
 
 ```
-ws://<host>/ws/logs/{source}?token=<jwt>[&instance_id=<id>]
+ws://<host>/ws/logs/{source}
 ```
 
-Opens a persistent WebSocket connection that streams new log lines in real time as they are appended to the log file.  Authentication is via the `token` query parameter (the same JWT returned by `/auth/login`).
-
-| Query Param | Description |
-|---|---|
-| `token` | **Required.** JWT bearer token. |
-| `instance_id` | Optional. Scope the stream to a specific worldserver instance's log directory. |
-
-The client can send a JSON message to update the level filter at any time:
-
-```json
-{ "level": "ERROR" }
-```
-
-Set `level` to `null` to stream all lines.
+Opens a persistent WebSocket connection that streams new log lines in real time as they are appended to the log file. Each message is a plain-text log line.
 
 ### Example (JavaScript)
 
 ```javascript
-const ws = new WebSocket("ws://localhost/ws/logs/worldserver?token=eyJ...&instance_id=2");
-ws.onmessage = (event) => console.log(JSON.parse(event.data).line);
+const ws = new WebSocket("ws://localhost/ws/logs/worldserver");
+ws.onmessage = (event) => console.log(event.data);
 ```
 
 ---
