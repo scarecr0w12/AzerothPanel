@@ -70,8 +70,10 @@ jobs:
         run: |
           # Verify that the FastAPI app can be imported without errors.
           # Uses a no-op .env so Pydantic settings doesn't abort.
+          # PANEL_LOG_DIR must point somewhere the runner can write to;
+          # app/main.py calls Path(PANEL_LOG_DIR).mkdir() at import time.
           cp .env.example .env
-          python -c "import app.main; print('Import OK')"
+          PANEL_LOG_DIR=/tmp/panel-logs python -c "import app.main; print('Import OK')"
 
   # ─── Docker Compose validation ────────────────────────────────────────────
   docker-lint:
@@ -80,6 +82,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up env files for compose validation
+        run: |
+          # docker-compose.yml references env_file: ./backend/.env which must
+          # exist for `docker compose config` to succeed. Copy the examples.
+          cp .env.example .env
+          cp backend/.env.example backend/.env
 
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
