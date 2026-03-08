@@ -31,7 +31,7 @@ frontend/.vite/
 
 # Logs
 *.log
-logs/
+
 
 # Panel runtime data (SQLite DB + application logs)
 data/
