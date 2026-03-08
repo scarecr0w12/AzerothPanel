@@ -1,0 +1,21 @@
+# Code owners — these users are requested for review on all PRs.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @scarecr0w12
+
+# Backend
+/backend/ @scarecr0w12
+
+# Frontend
+/frontend/ @scarecr0w12
+
+# Docker & CI/CD
+/docker-compose.yml @scarecr0w12
+/.github/ @scarecr0w12
+/Makefile @scarecr0w12
+/nginx.conf @scarecr0w12
+
+# Security-sensitive files
+/backend/app/core/security.py @scarecr0w12
+/backend/app/api/v1/endpoints/auth.py @scarecr0w12

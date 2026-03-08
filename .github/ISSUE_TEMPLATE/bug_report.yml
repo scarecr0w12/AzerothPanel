@@ -1,0 +1,117 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour in AzerothPanel.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to file a bug report. Please fill in as much detail as possible to help us reproduce and fix the issue quickly.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      description: Please confirm you have done the following before submitting.
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am running the latest version of AzerothPanel.
+          required: true
+        - label: I have read the [documentation](https://github.com/scarecr0w12/AzerothPanel/blob/main/docs/installation.md).
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: A clear and concise description of what the bug is.
+      placeholder: When I click "Start Server", the page returns a 500 error…
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide detailed steps to reliably reproduce the issue.
+      placeholder: |
+        1. Navigate to Server Control page
+        2. Click "Start worldserver"
+        3. Observe the error toast
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened? Include screenshots if possible.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      description: Which part of the panel is affected?
+      options:
+        - Dashboard
+        - Server Control
+        - Player Management
+        - Log Viewer
+        - Database Manager
+        - Compiler
+        - Installer
+        - Data Extraction
+        - Module Manager
+        - Config Editor
+        - Backup & Restore
+        - Settings
+        - Authentication
+        - Docker / Deployment
+        - Host Daemon (ac_host_daemon.py)
+        - Other / Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please provide relevant environment details.
+      value: |
+        - AzerothPanel version / git commit:
+        - OS (host): 
+        - Docker version:
+        - AzerothCore version:
+        - Browser (if UI issue):
+        - Deployment method: Docker Compose / local dev
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste relevant log output from `make docker-logs` or the browser console.
+        Wrap long output in `<details><summary>Logs</summary>…</details>` tags.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Any other context, workarounds you have found, or related issues.

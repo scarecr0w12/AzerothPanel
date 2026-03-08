@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: AzerothCore Community
+    url: https://discord.gg/gkt4y2x
+    about: For help with AzerothCore (not AzerothPanel), please visit the AzerothCore Discord.
+  - name: Documentation
+    url: https://github.com/scarecr0w12/AzerothPanel/blob/main/docs/installation.md
+    about: Read the AzerothPanel documentation before filing an issue.
+  - name: Security Vulnerability
+    url: https://github.com/scarecr0w12/AzerothPanel/blob/main/SECURITY.md
+    about: Please do NOT open a public issue for security vulnerabilities. Follow the security policy instead.

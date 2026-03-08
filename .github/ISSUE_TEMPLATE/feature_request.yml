@@ -1,0 +1,85 @@
+name: Feature Request
+description: Suggest a new feature or improvement for AzerothPanel.
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new feature! Please be as detailed as possible so we can evaluate and prioritise your idea.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and this feature has not been requested before.
+          required: true
+        - label: This feature is related to AzerothPanel and not to AzerothCore itself.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: Describe the problem you are facing or the use-case that motivates this request.
+      placeholder: I often need to do X but the panel currently doesn't support it…
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you would like to see. Mockups, diagrams, or API sketches are welcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      description: Which part of the panel would this feature belong to?
+      options:
+        - Dashboard
+        - Server Control
+        - Player Management
+        - Log Viewer
+        - Database Manager
+        - Compiler
+        - Installer
+        - Data Extraction
+        - Module Manager
+        - Config Editor
+        - Backup & Restore
+        - Settings
+        - Authentication
+        - Docker / Deployment
+        - New area / Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (from your perspective)
+      options:
+        - "Nice to have"
+        - "Would significantly improve my workflow"
+        - "Blocking — I can't manage my server without it"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative solutions or workarounds? Why would they be insufficient?
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or references that may be helpful.
